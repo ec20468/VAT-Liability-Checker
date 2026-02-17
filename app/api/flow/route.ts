@@ -28,18 +28,38 @@ function scoreTitle(title: string, words: string[]) {
   return words.reduce((s, w) => (t.includes(w) ? s + 1 : s), 0);
 }
 
-// two-stage notice selection: word overlap to get a shortlist, then model picks the minimum set actually needed.
-// doing it this way avoids sending all 300+ notices to the model every time.
+// two-stage notice selection: model first classifies the supply into generic terms that match notice titles,
+// then we word-overlap score against those terms, then the model picks the minimum set actually needed.
+// the classification step is what makes brand names and specific products work —
+// "Skittles" → "confectionery food product" overlaps with the food products notice title, "Skittles" alone doesn't.
 async function selectNotices(userText: string, maxPick = 5) {
   const index = await getVatNoticesIndex();
 
+  // classify the supply into generic terms before scoring — this is what lets us match notice titles
+  // for branded/specific queries that wouldn't overlap with any notice title on their own
+  const classified = await generateObject({
+    model: "openai/gpt-4o-mini",
+    schema: z.object({ supplyDescription: z.string() }),
+    prompt: [
+      "Describe the type of good or service being queried in 3-6 generic words that would appear in a UK VAT notice title.",
+      "Focus on the supply category, not the brand or specific name.",
+      "Examples:",
+      "  'Skittles' → 'confectionery food product'",
+      "  'Tesla Model 3' → 'passenger motor vehicle'",
+      "  'GP appointment' → 'medical healthcare service'",
+      "  'Deliveroo order' → 'takeaway food catering'",
+      "",
+      `Query: ${userText}`,
+    ].join("\n"),
+  });
+
   // strip short words so we don't match "the", "of", "in" etc.
-  const words = userText
+  const words = classified.object.supplyDescription
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w.length >= 3);
 
-  // pre-rank by title overlap, take top 30 as candidates for the model
+  // pre-rank by title overlap against the classified description, take top 30 as candidates for the model
   const ranked = index
     .map((n) => ({ ...n, score: scoreTitle(n.title, words) }))
     .sort((a, b) => b.score - a.score);
@@ -48,17 +68,20 @@ async function selectNotices(userText: string, maxPick = 5) {
 
   const PickSchema = z.object({ picks: z.array(z.string()).max(maxPick) });
 
-  // model picks the minimum set from the shortlist — better at understanding relevance than word overlap
+  // model picks the minimum set from the shortlist — better at understanding relevance than word overlap.
+  // notice 700 is explicitly a last resort so the model doesn't default to the general guide.
   const picked = await generateObject({
     model: "openai/gpt-4o-mini",
     schema: PickSchema,
     prompt: [
       "Pick the minimum set of VAT Notices needed to determine VAT liability for the query.",
       "- You may ONLY pick from the provided list.",
-      "- The general VAT guide (notice 700) should only be picked if nothing more specific applies.",
+      "- Prefer specific notices over general ones.",
+      "- Only pick the general VAT guide (notice 700) if no specific notice covers this supply type.",
       `- Return between 1 and ${maxPick} basePath strings.`,
       "",
       `Query: ${userText}`,
+      `Supply type: ${classified.object.supplyDescription}`,
       "",
       "Notices (title | basePath):",
       candidates.map((r) => `${r.title} | ${r.basePath}`).join("\n"),
@@ -330,6 +353,8 @@ function buildAskPrompt(
     "- Options must be categories that literally appear in the evidence. Options must NOT be rates of VAT. Cite the paragraph that defines each one.",
     "- Do NOT invent categories from general knowledge.",
     "- Do NOT ask about anything that won't change the VAT rate (e.g. buyer's VAT recovery, bookkeeping).",
+    "- Questions must ask about a factual characteristic of the supply that the user can observe themselves (e.g. is it hot or cold, is it sold on premises, does it contain alcohol).",
+    "- Do NOT ask the user to make legal classifications or determine their own VAT status — that is this tool's job.",
     `- Do NOT use any of these question ids: ${JSON.stringify(priorAsked)}`,
     "",
     `Supply: ${userText}`,

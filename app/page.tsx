@@ -3,13 +3,78 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FlowResponse } from "@/lib/schemas/flow";
 
+const SITE_PASSWORD = "vat2025"; // ← change this to your chosen password
+
+function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
+  const [value, setValue] = useState("");
+  const [shake, setShake] = useState(false);
+
+  function attempt() {
+    if (value === SITE_PASSWORD) {
+      onUnlock();
+    } else {
+      setShake(true);
+      setValue("");
+      setTimeout(() => setShake(false), 600);
+    }
+  }
+
+  return (
+    <main className="min-h-screen px-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col items-center justify-center">
+        <div
+          className="w-full space-y-3 rounded-2xl border border-khgreen/12 bg-white p-6"
+          style={shake ? { animation: "shake 0.4s ease-in-out" } : {}}
+        >
+          <div className="text-center">
+            <div className="text-xl font-semibold">VAT liability helper</div>
+            <div className="mt-1 text-sm opacity-70">
+              Enter the access password
+            </div>
+          </div>
+
+          <input
+            type="password"
+            autoFocus
+            className="w-full rounded-xl border border-khgreen/12 px-4 py-3 text-sm"
+            placeholder="Password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") attempt();
+            }}
+          />
+
+          <button
+            className="w-full rounded-xl border border-khgreen/12 px-4 py-2 text-sm"
+            onClick={attempt}
+            type="button"
+          >
+            Enter
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          20%       { transform: translateX(-8px); }
+          40%       { transform: translateX(8px); }
+          60%       { transform: translateX(-5px); }
+          80%       { transform: translateX(5px); }
+        }
+      `}</style>
+    </main>
+  );
+}
+
 type AnswersMap = Record<string, string>;
 
 type AnsweredPair = { id: string; value: string; label?: string };
 
 type RoundEntry = {
   id: string;
-  answered: AnsweredPair[]; // what the user submitted for this round (empty for the first round)
+  answered: AnsweredPair[];
   data: FlowResponse;
 };
 
@@ -55,12 +120,10 @@ function NodeShell({
 }) {
   return (
     <div className="relative pl-10">
-      {/* trunk line */}
       {!isLast ? (
         <div className="absolute left-[14px] top-7 h-full w-px bg-khgreen/15" />
       ) : null}
 
-      {/* node dot */}
       <div className="absolute left-2 top-5 h-4 w-4 rounded-full border border-khgreen/20 bg-cream" />
 
       <div className="rounded-2xl border border-khgreen/12 bg-white p-4">
@@ -72,31 +135,48 @@ function NodeShell({
 }
 
 export default function Page() {
-  // initial entry UI
+  // ── ALL hooks must come before any conditional return ──────────────────────
+  const [unlocked, setUnlocked] = useState(false);
   const [draft, setDraft] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
-
-  // round history (each server response becomes a “segment” in the trunk)
   const [rounds, setRounds] = useState<RoundEntry[]>([]);
-
-  // runtime states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // latest round derived
-  const latest = rounds[rounds.length - 1]?.data ?? null;
-  const questions = latest?.questions ?? [];
-  const evidencePool = latest?.evidencePool ?? [];
-
-  // pending answers UI for the current set of questions (latest round only)
   const [pendingAnswers, setPendingAnswers] = useState<AnswersMap>({});
-
-  // evidence toggle per round (simple: one toggle controlling all evidence blocks)
   const [showEvidence, setShowEvidence] = useState(false);
-
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  const latest = rounds[rounds.length - 1]?.data ?? null;
+  const questions = latest?.questions ?? [];
   const isActive = submittedQuery !== null;
+
+  const answeredChipsByRound = useMemo(() => {
+    const map = new Map<string, AnsweredPair[]>();
+    for (const r of rounds) map.set(r.id, r.answered);
+    return map;
+  }, [rounds]);
+
+  useEffect(() => {
+    if (!latest) return;
+    const next: AnswersMap = {};
+    for (const q of questions) {
+      const existing = latest.state.answers[q.id];
+      if (existing) next[q.id] = existing;
+    }
+    setPendingAnswers(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latest?.state?.asked?.length, questions.length]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [rounds.length, loading, error]);
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // Password gate — safe to early-return here because all hooks are above
+  if (!unlocked) {
+    return <PasswordGate onUnlock={() => setUnlocked(true)} />;
+  }
 
   function startFresh() {
     setSubmittedQuery(null);
@@ -153,25 +233,6 @@ export default function Page() {
     callFlow({ userText: q }, []);
   }
 
-  // prefill pendingAnswers for the latest questions based on server state.answers
-  useEffect(() => {
-    if (!latest) return;
-
-    const next: AnswersMap = {};
-    for (const q of questions) {
-      const existing = latest.state.answers[q.id];
-      if (existing) next[q.id] = existing;
-    }
-    setPendingAnswers(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latest?.state?.asked?.length, questions.length]);
-
-  // auto-scroll to bottom when a round is appended
-  useEffect(() => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [rounds.length, loading, error]);
-
   function submitClarifiers() {
     if (!latest || !submittedQuery) return;
 
@@ -199,14 +260,7 @@ export default function Page() {
     );
   }
 
-  // derived helper: show “mini bubbles” from answers submitted in each round
-  const answeredChipsByRound = useMemo(() => {
-    const map = new Map<string, AnsweredPair[]>();
-    for (const r of rounds) map.set(r.id, r.answered);
-    return map;
-  }, [rounds]);
-
-  // INITIAL SCREEN (only input centered)
+  // INITIAL SCREEN
   if (!isActive) {
     return (
       <main className="min-h-screen px-6">
@@ -255,17 +309,14 @@ export default function Page() {
     );
   }
 
-  // ACTIVE SCREEN (top user bubble + trunk timeline + bottom input)
+  // ACTIVE SCREEN
   return (
     <main className="min-h-screen px-6">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col">
-        {/* top area */}
         <div className="flex-1 py-6">
           <div className="space-y-5">
-            {/* user query bubble */}
             <Bubble align="right">{submittedQuery}</Bubble>
 
-            {/* trunk timeline */}
             <div className="space-y-4">
               {rounds.map((r, roundIdx) => {
                 const isLastRound = roundIdx === rounds.length - 1;
@@ -275,7 +326,6 @@ export default function Page() {
                 );
                 const answeredChips = answeredChipsByRound.get(r.id) ?? [];
 
-                // Each server response becomes a sequence of nodes (A/B/C) in the trunk.
                 const nodes: Array<
                   | { kind: "evidence" }
                   | { kind: "clarifiers" }
@@ -283,7 +333,6 @@ export default function Page() {
                 > = [];
 
                 nodes.push({ kind: "evidence" });
-
                 if (r.data.questions.length) nodes.push({ kind: "clarifiers" });
                 if (r.data.answer) nodes.push({ kind: "answer" });
 
@@ -379,7 +428,6 @@ export default function Page() {
                             isFirst={isFirst}
                             isLast={isLast}
                           >
-                            {/* show what was submitted in this round (mini bubbles) */}
                             {answeredChips.length ? (
                               <div className="mb-3 flex flex-wrap gap-2">
                                 {answeredChips.map((a) => (
@@ -452,7 +500,6 @@ export default function Page() {
                                       })}
                                     </div>
 
-                                    {/* why this matters for each question */}
                                     {q.citeParagraphs.length ? (
                                       <div className="rounded-2xl border border-khgreen/12 p-3">
                                         <div className="text-xs font-medium opacity-80">
@@ -594,13 +641,12 @@ export default function Page() {
                 </div>
               ) : null}
 
-              {/* scroll anchor */}
               <div ref={scrollRef} />
             </div>
           </div>
         </div>
 
-        {/* bottom bar (chat-style) */}
+        {/* bottom bar */}
         <div className="sticky bottom-0 bg-cream py-4">
           <div className="rounded-2xl border border-khgreen/12 bg-white p-3">
             <div className="flex gap-2">
@@ -632,7 +678,6 @@ export default function Page() {
               </button>
             </div>
 
-            {/* tiny hint about what to do if clarifiers are pending */}
             {latest && latest.questions.length && !latest.answer ? (
               <div className="mt-2 text-xs opacity-70">
                 Clarifiers are active above. Submit them there to append the
