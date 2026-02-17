@@ -4,7 +4,6 @@ import { generateObject } from "ai";
 
 import { resolveGovUkDoc } from "@/lib/govuk/resolve";
 import { getVatNoticesIndex } from "@/lib/govuk/vatNoticesIndex";
-import { pickCandidateParagraphs } from "@/lib/govuk/pick";
 import {
   FlowRequestSchema,
   FlowResponseSchema,
