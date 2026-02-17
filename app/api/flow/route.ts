@@ -1,4 +1,3 @@
-// app/api/flow/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateObject } from "ai";
@@ -72,14 +71,14 @@ async function selectNotices(userText: string, maxPick = 5) {
     : ranked.slice(0, 3).map((r) => r.basePath); //fallback to top-ranked notices if model picks none or invalid ones.
 }
 
-async function buildEvidencePool(basePaths: string[]) {
+async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
   const docs = await Promise.all(basePaths.map(resolveGovUkDoc)); //resolveGovUkDoc resolves a basePath to the full doc content and metadata.
 
   const out: EvidencePara[] = [];
   const seen = new Set<string>();
 
   for (const doc of docs) {
-    const paras = pickCandidateParagraphs(doc, "final", 25); //take 25 paragraphs of each document
+    const paras = doc.paragraphs.slice(0, 400); //safety cap on number of paragraphs to consider from each doc
     for (const p of paras) {
       const key = `${doc.basePath}:${p.index}`;
       if (seen.has(key)) continue;
@@ -108,6 +107,54 @@ function assertInRange(indices: number[], maxExclusive: number) {
   }
 }
 
+function pickMinimalCitations(
+  evidenceOut: Array<{
+    url: string;
+    basePath: string;
+    paragraphIndex: number; // pool index
+    docParagraphIndex: number;
+    snippet: string;
+  }>,
+  usedIndices: number[],
+  opts?: { maxTotal?: number; maxPerDoc?: number },
+) {
+  const maxTotal = opts?.maxTotal ?? 5; // total citations you return
+  const maxPerDoc = opts?.maxPerDoc ?? 2; // avoid dumping many from one notice
+
+  // Keep order of first appearance in usedIndices
+  const uniqueUsed: number[] = [];
+  const seen = new Set<number>();
+  for (const i of usedIndices) {
+    if (!seen.has(i)) {
+      seen.add(i);
+      uniqueUsed.push(i);
+    }
+  }
+
+  // Map pool index -> evidence item
+  const byIndex = new Map<number, (typeof evidenceOut)[number]>();
+  for (const e of evidenceOut) byIndex.set(e.paragraphIndex, e);
+
+  // Enforce per-doc cap, then total cap
+  const perDocCount = new Map<string, number>();
+  const picked: (typeof evidenceOut)[number][] = [];
+
+  for (const idx of uniqueUsed) {
+    const e = byIndex.get(idx);
+    if (!e) continue;
+
+    const c = perDocCount.get(e.basePath) ?? 0;
+    if (c >= maxPerDoc) continue;
+
+    picked.push(e);
+    perDocCount.set(e.basePath, c + 1);
+
+    if (picked.length >= maxTotal) break;
+  }
+
+  return picked;
+}
+
 export async function POST(req: Request) {
   //route handler
   const raw = await req.json().catch(() => null);
@@ -128,9 +175,19 @@ export async function POST(req: Request) {
   // apply newly answered clarifiers.
   const answered = parsed.data.answered ?? [];
   for (const a of answered) priorAnswers[a.id] = a.value;
+  const queryTerms = Array.from(
+    new Set(
+      [userText, ...Object.values(priorAnswers).map((v) => String(v))]
+        .join(" ")
+        .toLowerCase()
+        .split(/\s+/)
+        .map((w) => w.replace(/[^\p{L}\p{N}]+/gu, ""))
+        .filter((w) => w.length >= 3),
+    ),
+  );
 
   const basePaths = await selectNotices(userText); //build the evidence pool based on the user query and the model's picks.
-  const evidence = await buildEvidencePool(basePaths);
+  const evidence = await buildEvidencePool(basePaths, queryTerms);
 
   const evidenceOut = evidence.map((e) => ({
     //the evidence pool we send to the client and show the model includes the metadata and text snippet for each paragraph.
@@ -262,9 +319,11 @@ export async function POST(req: Request) {
     assertInRange(forced.object.citeParagraphs, maxIdx);
     for (const b of forced.object.bullets) assertInRange(b.cites, maxIdx);
 
-    const citations = forced.object.citeParagraphs
-      .map((i) => evidenceOut.find((e) => e.paragraphIndex === i))
-      .filter(Boolean) as any;
+    const citations = pickMinimalCitations(
+      evidenceOut as any,
+      forced.object.bullets.flatMap((b) => b.cites),
+      { maxTotal: 5, maxPerDoc: 2 },
+    ) as any;
 
     const response: FlowResponse = {
       state: { answers: priorAnswers, asked: priorAsked },
@@ -282,9 +341,11 @@ export async function POST(req: Request) {
 
   const citations =
     result.object.status === "ANSWER" && result.object.answer
-      ? (result.object.answer.citeParagraphs
-          .map((i) => evidenceOut.find((e) => e.paragraphIndex === i))
-          .filter(Boolean) as any)
+      ? (pickMinimalCitations(
+          evidenceOut as any,
+          result.object.answer.bullets.flatMap((b) => b.cites),
+          { maxTotal: 5, maxPerDoc: 2 },
+        ) as any)
       : [];
 
   const response: FlowResponse = {
