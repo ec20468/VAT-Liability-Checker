@@ -28,6 +28,7 @@ function scoreTitle(title: string, words: string[]) {
 
 async function selectNotices(userText: string, maxPick = 5) {
   //ranked list of notices in two steps: first, word overlap.
+
   const index = await getVatNoticesIndex(); //list of notices.
   const words = userText //user input text split into words, lowercased, and filtered to remove short/common words so that matching is more relevant.
     .toLowerCase()
@@ -37,6 +38,9 @@ async function selectNotices(userText: string, maxPick = 5) {
   const ranked = index //simple ranking
     .map((n) => ({ ...n, score: scoreTitle(n.title, words) }))
     .sort((a, b) => b.score - a.score);
+
+  const CANDIDATES = 30;
+  const candidates = ranked.slice(0, CANDIDATES);
 
   const PickSchema = z.object({
     picks: z.array(z.string()).max(maxPick),
@@ -56,7 +60,7 @@ async function selectNotices(userText: string, maxPick = 5) {
       `Query: ${userText}`,
       "",
       "Notices (title | basePath):",
-      ranked.map((r) => `${r.title} | ${r.basePath}`).join("\n"),
+      candidates.map((r) => `${r.title} | ${r.basePath}`).join("\n"),
       "",
       'Return JSON: {"picks":["/base/path", "..."]}',
     ].join("\n"),
@@ -70,22 +74,52 @@ async function selectNotices(userText: string, maxPick = 5) {
     : ranked.slice(0, 3).map((r) => r.basePath); //fallback to top-ranked notices if model picks none or invalid ones.
 }
 
-async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
-  const docs = await Promise.all(basePaths.map(resolveGovUkDoc)); //resolveGovUkDoc resolves a basePath to the full doc content and metadata.
+function scoreParagraph(text: string, terms: string[]) {
+  const t = text.toLowerCase();
+  let score = 0;
 
-  const out: EvidencePara[] = [];
+  for (const term of terms) {
+    if (!term) continue;
+    if (t.includes(term)) score += 1;
+  }
+
+  // small boost for VAT-liability language
+  if (
+    t.includes("zero-rated") ||
+    t.includes("standard-rated") ||
+    t.includes("reduced rate") ||
+    t.includes("exempt")
+  ) {
+    score += 2;
+  }
+
+  return score;
+}
+
+async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
+  const docs = await Promise.all(basePaths.map(resolveGovUkDoc));
+
+  const PER_DOC = 40; // keep each doc tight
+  const MAX_TOTAL = 160; // keep total context tight
+
+  const candidates: Omit<EvidencePara, "poolIndex">[] = [];
   const seen = new Set<string>();
 
   for (const doc of docs) {
-    const paras = doc.paragraphs.slice(0, 400); //safety cap on number of paragraphs to consider from each doc
-    for (const p of paras) {
+    const paras = doc.paragraphs.slice(0, 800);
+
+    const top = paras
+      .map((p) => ({ p, s: scoreParagraph(p.text, queryTerms) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, PER_DOC);
+
+    for (const { p } of top) {
       const key = `${doc.basePath}:${p.index}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
-      out.push({
-        // append to out: the evidence pool we will show the model, with the pool index, doc metadata, and paragraph text.
-        poolIndex: out.length,
+      candidates.push({
         basePath: doc.basePath,
         webUrl: doc.webUrl,
         docParagraphIndex: p.index,
@@ -94,7 +128,13 @@ async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
     }
   }
 
-  return out;
+  const trimmed = candidates
+    .map((e) => ({ e, s: scoreParagraph(e.text, queryTerms) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, MAX_TOTAL)
+    .map((x) => x.e);
+
+  return trimmed.map((e, i) => ({ ...e, poolIndex: i }));
 }
 
 function assertInRange(indices: number[], maxExclusive: number) {
@@ -158,6 +198,11 @@ export async function POST(req: Request) {
   //route handler
   const raw = await req.json().catch(() => null);
   const parsed = FlowRequestSchema.safeParse(raw);
+  console.log("SERVER ← received flow payload", {
+    answered: raw.answered,
+    stateAnswers: raw.state?.answers,
+    userText: raw.userText,
+  });
 
   if (!parsed.success) {
     return NextResponse.json(
@@ -169,6 +214,8 @@ export async function POST(req: Request) {
   const userText = (parsed.data.userText ?? "").trim(); //initialise state
   const priorAnswers = parsed.data.state?.answers ?? {};
   const priorAsked = parsed.data.state?.asked ?? [];
+  const priorBasePaths = parsed.data.state?.basePaths ?? [];
+
   const askedSet = new Set(priorAsked);
 
   // apply newly answered clarifiers.
@@ -185,7 +232,17 @@ export async function POST(req: Request) {
     ),
   );
 
-  const basePaths = await selectNotices(userText); //build the evidence pool based on the user query and the model's picks.
+  const mergedQuery = [
+    userText,
+    ...Object.values(priorAnswers).map((v) => String(v)),
+  ].join(" ");
+
+  const basePaths =
+    priorBasePaths.length > 0
+      ? priorBasePaths
+      : await selectNotices(mergedQuery);
+
+  //build the evidence pool based on the user query and the model's picks.
   const evidence = await buildEvidencePool(basePaths, queryTerms);
 
   const evidenceOut = evidence.map((e) => ({
@@ -224,16 +281,19 @@ export async function POST(req: Request) {
     model: "openai/gpt-4o-mini",
     schema: ModelSchema,
     prompt: [
-      "Determine UK VAT LIABILITY using ONLY the provided evidence paragraphs from GOV.UK VAT Notices.",
+      "Task: Determine the VAT liability of the good/service itself (zero/reduced/standard/exempt/out of scope) for the described good/service, using ONLY the evidence provided.",
+      "Do NOT determine VAT reclaim/input tax recovery for the buyer.",
       "",
-      "Hard rules:",
-      "- Prefer ANSWER over NEED_INFO whenever the evidence supports a defensible conclusion.",
-      `- If you must ask questions, ask the MINIMUM required (max ${MAX_QUESTIONS}).`,
-      "- Only ask a question if its answer would change the VAT liability outcome.",
-      "- Do NOT ask any question whose id appears in Previously asked ids.",
-      "- Do NOT ask any question whose id already exists in Answered clarifiers.",
-      "- Each question must cite evidence paragraphs that show why that fact matters.",
-      "- Each answer bullet must cite evidence paragraphs.",
+      "Rules:",
+      "- If the query is ambiguous in a way that could change the supply's VAT rate/category (e.g. 'bike' could mean bicycle vs motorbike), return NEED_INFO and ask the minimum clarifier(s) (max " +
+        MAX_QUESTIONS +
+        ").",
+      "- Otherwise, return ANSWER if the evidence supports a conclusion; do not guess.",
+      "- Only ask a question if the answer could change the supply's VAT rate/category. Do NOT ask questions only relevant to input tax recovery (business vs personal use, reclaiming VAT), VAT return process, or bookkeeping.",
+      "- Answer options for each question must reflect distinctions that actually appear in the cited evidence paragraphs and would change the VAT liability conclusion. Do NOT invent categories from general knowledge.",
+      "- Do NOT ask any question whose id appears in Previously asked ids or Answered clarifiers.",
+      "- Every question and every bullet must cite evidence paragraph indices.",
+      "- Your conclusion must be directly applicable to the good/service in the query, not a general statement of law.",
       "",
       `User query: ${userText}`,
       `Answered clarifiers: ${JSON.stringify(priorAnswers)}`,
@@ -277,7 +337,9 @@ export async function POST(req: Request) {
 
   // STALL GUARD: model says NEED_INFO but we have nothing new to ask
   const isStalled =
-    result.object.status === "NEED_INFO" && questions.length === 0;
+    result.object.status === "NEED_INFO" &&
+    questions.length === 0 &&
+    Object.keys(priorAnswers).length > 0;
 
   if (isStalled) {
     const ForceAnswerSchema = z.object({
@@ -325,7 +387,7 @@ export async function POST(req: Request) {
     ) as any;
 
     const response: FlowResponse = {
-      state: { answers: priorAnswers, asked: priorAsked },
+      state: { answers: priorAnswers, asked: priorAsked, basePaths },
       questions: [],
       answer: {
         conclusion: forced.object.conclusion,
@@ -348,7 +410,7 @@ export async function POST(req: Request) {
       : [];
 
   const response: FlowResponse = {
-    state: { answers: priorAnswers, asked: nextAsked },
+    state: { answers: priorAnswers, asked: nextAsked, basePaths },
     questions,
     answer:
       result.object.status === "ANSWER" && result.object.answer

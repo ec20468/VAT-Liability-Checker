@@ -30,20 +30,22 @@ export const FlowRequestSchema = z.object({
       }),
     )
     .optional(),
-  state: z //server tracks which question IDs it has asked already. avoid repeated Q's
+  state: z
     .object({
       answers: z.record(z.string(), z.string()),
       asked: z.array(z.string()),
+      basePaths: z.array(z.string()).optional(),
     })
     .optional(),
 });
 
 export const FlowResponseSchema = z.object({
   state: z.object({
-    //every response includes the updated state. avoid repeated Q's and track answers.
     answers: z.record(z.string(), z.string()),
     asked: z.array(z.string()),
+    basePaths: z.array(z.string()).optional(),
   }),
+
   questions: z.array(QuestionSchema), //clarifier Q's. can be empty
   answer: z //answer would be null if it has questions. or provide an answer with no questions
     .object({
