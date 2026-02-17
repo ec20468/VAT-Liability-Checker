@@ -7,12 +7,12 @@ import { getVatNoticesIndex } from "@/lib/govuk/vatNoticesIndex";
 import {
   FlowRequestSchema,
   FlowResponseSchema,
-  QuestionSchema,
   type FlowResponse,
 } from "@/lib/schemas/flow";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type EvidencePara = {
-  //represents a single paragraph of evidence from a GOV.UK doc
   poolIndex: number;
   basePath: string;
   webUrl: string;
@@ -20,70 +20,73 @@ type EvidencePara = {
   text: string;
 };
 
+// ─── STEP 1: Select notices ───────────────────────────────────────────────────
+
+// counts how many query words appear in a notice title — cheap relevance signal before touching the model
 function scoreTitle(title: string, words: string[]) {
-  //figure out how relevant a VAT Notice is to the user's query based on word overlap.
   const t = title.toLowerCase();
   return words.reduce((s, w) => (t.includes(w) ? s + 1 : s), 0);
 }
 
+// two-stage notice selection: word overlap to get a shortlist, then model picks the minimum set actually needed.
+// doing it this way avoids sending all 300+ notices to the model every time.
 async function selectNotices(userText: string, maxPick = 5) {
-  //ranked list of notices in two steps: first, word overlap.
+  const index = await getVatNoticesIndex();
 
-  const index = await getVatNoticesIndex(); //list of notices.
-  const words = userText //user input text split into words, lowercased, and filtered to remove short/common words so that matching is more relevant.
+  // strip short words so we don't match "the", "of", "in" etc.
+  const words = userText
     .toLowerCase()
     .split(/\s+/)
-    .filter((w) => w.length >= 3); //the list needs to have more than three characters to be considered a meaningful match
+    .filter((w) => w.length >= 3);
 
-  const ranked = index //simple ranking
+  // pre-rank by title overlap, take top 30 as candidates for the model
+  const ranked = index
     .map((n) => ({ ...n, score: scoreTitle(n.title, words) }))
     .sort((a, b) => b.score - a.score);
 
-  const CANDIDATES = 30;
-  const candidates = ranked.slice(0, CANDIDATES);
+  const candidates = ranked.slice(0, 30);
 
-  const PickSchema = z.object({
-    picks: z.array(z.string()).max(maxPick),
-  });
+  const PickSchema = z.object({ picks: z.array(z.string()).max(maxPick) });
 
+  // model picks the minimum set from the shortlist — better at understanding relevance than word overlap
   const picked = await generateObject({
-    //second step of ranking: ask the model to pick the most relevant notices from the top of the ranked list, with a hard cap to avoid overwhelming it.
     model: "openai/gpt-4o-mini",
     schema: PickSchema,
     prompt: [
       "Pick the minimum set of VAT Notices needed to determine VAT liability for the query.",
-      "Rules:",
       "- You may ONLY pick from the provided list.",
-      "- Prefer specific notices over general ones.",
+      "- The general VAT guide (notice 700) should only be picked if nothing more specific applies.",
       `- Return between 1 and ${maxPick} basePath strings.`,
       "",
       `Query: ${userText}`,
       "",
       "Notices (title | basePath):",
       candidates.map((r) => `${r.title} | ${r.basePath}`).join("\n"),
-      "",
-      'Return JSON: {"picks":["/base/path", "..."]}',
     ].join("\n"),
   });
 
+  // validate picks against the full index — model sometimes hallucinates paths
   const allowed = new Set(index.map((i) => i.basePath));
   const valid = picked.object.picks.filter((p) => allowed.has(p));
 
+  // fallback to top word-overlap matches if model returns nothing usable
   return valid.length
     ? Array.from(new Set(valid))
-    : ranked.slice(0, 3).map((r) => r.basePath); //fallback to top-ranked notices if model picks none or invalid ones.
+    : ranked.slice(0, 3).map((r) => r.basePath);
 }
 
+// ─── STEP 2: Build evidence pool ─────────────────────────────────────────────
+
+// simple term frequency score — just enough to filter irrelevant paragraphs before sending to the model.
+// the VAT-liability language boost means paragraphs that explicitly state a rate float to the top.
 function scoreParagraph(text: string, terms: string[]) {
   const t = text.toLowerCase();
   let score = 0;
-
   for (const term of terms) {
     if (!term) continue;
     if (t.includes(term)) score += 1;
   }
-
-  // small boost for VAT-liability language
+  // boost paragraphs that explicitly state a VAT treatment — these are almost always what we need
   if (
     t.includes("zero-rated") ||
     t.includes("standard-rated") ||
@@ -92,23 +95,24 @@ function scoreParagraph(text: string, terms: string[]) {
   ) {
     score += 2;
   }
-
   return score;
 }
 
+// fetches all selected notices, scores their paragraphs, and returns the top N as the evidence pool.
+// the model does the real reading in step 3 — this is just to keep context size manageable.
 async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
   const docs = await Promise.all(basePaths.map(resolveGovUkDoc));
 
-  const PER_DOC = 40; // keep each doc tight
-  const MAX_TOTAL = 160; // keep total context tight
+  const PER_DOC = 40; // max paragraphs we keep per notice
+  const MAX_TOTAL = 160; // hard cap on total evidence sent to the model
 
   const candidates: Omit<EvidencePara, "poolIndex">[] = [];
   const seen = new Set<string>();
 
   for (const doc of docs) {
-    const paras = doc.paragraphs.slice(0, 800);
-
-    const top = paras
+    // score each paragraph, drop anything that scores 0, keep top PER_DOC
+    const top = doc.paragraphs
+      .slice(0, 800)
       .map((p) => ({ p, s: scoreParagraph(p.text, queryTerms) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
@@ -118,7 +122,6 @@ async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
       const key = `${doc.basePath}:${p.index}`;
       if (seen.has(key)) continue;
       seen.add(key);
-
       candidates.push({
         basePath: doc.basePath,
         webUrl: doc.webUrl,
@@ -128,39 +131,43 @@ async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
     }
   }
 
-  const trimmed = candidates
+  // re-rank across all docs and trim to MAX_TOTAL, then assign pool indices
+  return candidates
     .map((e) => ({ e, s: scoreParagraph(e.text, queryTerms) }))
     .sort((a, b) => b.s - a.s)
     .slice(0, MAX_TOTAL)
-    .map((x) => x.e);
-
-  return trimmed.map((e, i) => ({ ...e, poolIndex: i }));
+    .map((x) => x.e)
+    .map((e, i) => ({ ...e, poolIndex: i }));
 }
 
+// ─── Citation helpers ─────────────────────────────────────────────────────────
+
+// throws if the model returns a cite index outside the evidence pool — better to 500 than silently show a wrong source
 function assertInRange(indices: number[], maxExclusive: number) {
-  //checks each cited number is a numberbetween 0 and the length of the evidence pool.
   for (const n of indices) {
     if (!Number.isInteger(n) || n < 0 || n >= maxExclusive) {
-      throw new Error(`Model produced out-of-range cite index: ${n}`); //500 error.
+      throw new Error(`Model produced out-of-range cite index: ${n}`);
     }
   }
 }
 
+// trims the raw citations down to a small readable set.
+// per-doc cap stops one notice dominating the citations panel even if it was cited a lot.
 function pickMinimalCitations(
   evidenceOut: Array<{
     url: string;
     basePath: string;
-    paragraphIndex: number; // pool index
+    paragraphIndex: number;
     docParagraphIndex: number;
     snippet: string;
   }>,
   usedIndices: number[],
   opts?: { maxTotal?: number; maxPerDoc?: number },
 ) {
-  const maxTotal = opts?.maxTotal ?? 5; // total citations you return
-  const maxPerDoc = opts?.maxPerDoc ?? 2; // avoid dumping many from one notice
+  const maxTotal = opts?.maxTotal ?? 5;
+  const maxPerDoc = opts?.maxPerDoc ?? 2;
 
-  // Keep order of first appearance in usedIndices
+  // deduplicate while preserving order of first appearance
   const uniqueUsed: number[] = [];
   const seen = new Set<number>();
   for (const i of usedIndices) {
@@ -170,38 +177,216 @@ function pickMinimalCitations(
     }
   }
 
-  // Map pool index -> evidence item
   const byIndex = new Map<number, (typeof evidenceOut)[number]>();
   for (const e of evidenceOut) byIndex.set(e.paragraphIndex, e);
 
-  // Enforce per-doc cap, then total cap
   const perDocCount = new Map<string, number>();
   const picked: (typeof evidenceOut)[number][] = [];
 
   for (const idx of uniqueUsed) {
     const e = byIndex.get(idx);
     if (!e) continue;
-
     const c = perDocCount.get(e.basePath) ?? 0;
     if (c >= maxPerDoc) continue;
-
     picked.push(e);
     perDocCount.set(e.basePath, c + 1);
-
     if (picked.length >= maxTotal) break;
   }
 
   return picked;
 }
 
+// ─── Schemas ──────────────────────────────────────────────────────────────────
+
+// each option must cite the paragraph that defines its category —
+// this is the core fix for the "invented categories" problem.
+// if the model can't point to a notice paragraph, it can't offer the option.
+const OptionSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  citeParagraph: z.number().int().nonnegative(),
+});
+
+const QuestionSchema = z.object({
+  id: z.string(),
+  questionText: z.string(),
+  reasoning: z.string(),
+  options: z.array(OptionSchema).min(2).max(6),
+  citeParagraphs: z.array(z.number().int().nonnegative()).min(1),
+});
+
+// call 1 result: model reads the evidence and decides what state we're in.
+// ANSWER = can conclude now. NEED_CLARIFICATION = genuinely ambiguous, needs one question.
+// separating this from question generation means the model focuses purely on reading before deciding anything.
+const ReadSchema = z.object({
+  status: z.enum(["ANSWER", "NEED_CLARIFICATION"]),
+  // which paragraphs govern this supply — used by both the answer and question calls
+  governingParagraphs: z.array(z.number().int().nonnegative()).min(1),
+  // if ANSWER: what the liability is and why
+  conclusion: z.string().nullable(),
+  reasoningBullets: z
+    .array(
+      z.object({
+        text: z.string().min(1),
+        cites: z.array(z.number().int().nonnegative()).min(1).max(6),
+      }),
+    )
+    .nullable(),
+  // if NEED_CLARIFICATION: what branch point needs resolving and why existing answers don't cover it
+  unresolvedBranch: z.string().nullable(),
+});
+
+// call 2 result (only reached if call 1 returns NEED_CLARIFICATION):
+// model generates exactly one question based on the unresolved branch identified in call 1.
+const AskSchema = z.object({
+  question: QuestionSchema,
+});
+
+// call 2 fallback (stall guard): model gives the best answer it can with what it knows.
+// conditional rules ("if X then zero-rated, if Y then standard-rated") are fine here.
+const ForceAnswerSchema = z.object({
+  conclusion: z.string().min(1),
+  bullets: z
+    .array(
+      z.object({
+        text: z.string().min(1),
+        cites: z.array(z.number().int().nonnegative()).min(1).max(6),
+      }),
+    )
+    .min(1)
+    .max(8),
+  citeParagraphs: z.array(z.number().int().nonnegative()).min(1).max(12),
+});
+
+// ─── Multi-step prompts ───────────────────────────────────────────────────────
+
+// call 1: purely a reading task. model finds the governing section, checks whether it branches,
+// and checks whether the answered clarifiers already resolve any branch.
+// it does NOT generate questions here — that's call 2's job.
+function buildReadPrompt(
+  userText: string,
+  priorAnswers: Record<string, string>,
+  evidence: EvidencePara[],
+) {
+  const hasAnswers = Object.keys(priorAnswers).length > 0;
+
+  return [
+    "You are a VAT liability reader. Your only job is to read the evidence and report what you find.",
+    "Do NOT generate questions. Do NOT speculate. Only report what the evidence says.",
+    "",
+    "Do this in order:",
+    "",
+    "1. Find the paragraph(s) that directly govern the supply described. Return their indices in governingParagraphs.",
+    "",
+    "2. Does the governing section branch into sub-categories with different VAT rates?",
+    "   If NO branches exist, or the supply clearly falls into one branch: set status=ANSWER.",
+    "   If branches exist and the supply could fall into more than one: go to step 3.",
+    "",
+    hasAnswers
+      ? [
+          "3. The user has already answered some clarifying questions:",
+          `   ${JSON.stringify(priorAnswers)}`,
+          "   Do these answers resolve which branch applies?",
+          "   If YES: set status=ANSWER. Use the answered clarifiers to determine the branch.",
+          "   If NO: set status=NEED_CLARIFICATION and describe the unresolved branch in unresolvedBranch.",
+        ].join("\n")
+      : "3. No clarifying answers yet. If branches exist and are unresolved: set status=NEED_CLARIFICATION and describe the branch in unresolvedBranch.",
+    "",
+    "If status=ANSWER: fill conclusion and reasoningBullets. Set unresolvedBranch=null.",
+    "If status=NEED_CLARIFICATION: fill unresolvedBranch. Set conclusion=null and reasoningBullets=null.",
+    "",
+    `Supply: ${userText}`,
+    hasAnswers ? `Answered clarifiers: ${JSON.stringify(priorAnswers)}` : "",
+    "",
+    "Evidence (index | source | text):",
+    evidence
+      .map(
+        (p) =>
+          `[${p.poolIndex}] ${p.basePath} p${p.docParagraphIndex}: ${p.text}`,
+      )
+      .join("\n\n"),
+    "",
+    "Return JSON only.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// call 2: question generation. only runs if call 1 said NEED_CLARIFICATION.
+// the unresolved branch description from call 1 is passed in so the model knows exactly what to ask about.
+// every option must cite the paragraph that defines it — no invented categories.
+function buildAskPrompt(
+  userText: string,
+  priorAsked: string[],
+  unresolvedBranch: string,
+  governingParagraphs: number[],
+  evidence: EvidencePara[],
+) {
+  return [
+    "You are a VAT clarification assistant. Generate exactly one question to resolve the branch point described below.",
+    "",
+    "Rules:",
+    "- Options must be categories that literally appear in the evidence. Options must NOT be rates of VAT. Cite the paragraph that defines each one.",
+    "- Do NOT invent categories from general knowledge.",
+    "- Do NOT ask about anything that won't change the VAT rate (e.g. buyer's VAT recovery, bookkeeping).",
+    `- Do NOT use any of these question ids: ${JSON.stringify(priorAsked)}`,
+    "",
+    `Supply: ${userText}`,
+    `Branch to resolve: ${unresolvedBranch}`,
+    `Governing paragraphs: ${JSON.stringify(governingParagraphs)}`,
+    "",
+    "Relevant evidence (index | source | text):",
+    evidence
+      .filter((p) => governingParagraphs.includes(p.poolIndex))
+      .map(
+        (p) =>
+          `[${p.poolIndex}] ${p.basePath} p${p.docParagraphIndex}: ${p.text}`,
+      )
+      .join("\n\n"),
+    "",
+    "Return JSON only.",
+  ].join("\n");
+}
+
+// stall guard prompt: fires when call 1 still says NEED_CLARIFICATION but we've hit the question cap.
+// asks for the best possible answer — conditional rules by branch are better than "insufficient evidence".
+function buildForceAnswerPrompt(
+  userText: string,
+  priorAnswers: Record<string, string>,
+  evidence: EvidencePara[],
+) {
+  return [
+    "You have already asked the maximum number of clarifying questions.",
+    "Give the most specific VAT liability conclusion the evidence supports given what you know.",
+    "If the branch is still unresolved, give the VAT rule for each possible branch rather than refusing.",
+    "Do NOT say 'insufficient evidence' if you can give conditional rules instead.",
+    "",
+    `Supply: ${userText}`,
+    `Answered clarifiers: ${JSON.stringify(priorAnswers)}`,
+    "",
+    "Evidence (index | source | text):",
+    evidence
+      .map(
+        (p) =>
+          `[${p.poolIndex}] ${p.basePath} p${p.docParagraphIndex}: ${p.text}`,
+      )
+      .join("\n\n"),
+    "",
+    "Return JSON only.",
+  ].join("\n");
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
+
 export async function POST(req: Request) {
-  //route handler
   const raw = await req.json().catch(() => null);
   const parsed = FlowRequestSchema.safeParse(raw);
+
   console.log("SERVER ← received flow payload", {
-    answered: raw.answered,
-    stateAnswers: raw.state?.answers,
-    userText: raw.userText,
+    answered: raw?.answered,
+    stateAnswers: raw?.state?.answers,
+    userText: raw?.userText,
   });
 
   if (!parsed.success) {
@@ -211,19 +396,19 @@ export async function POST(req: Request) {
     );
   }
 
-  const userText = (parsed.data.userText ?? "").trim(); //initialise state
+  const userText = (parsed.data.userText ?? "").trim();
   const priorAnswers = parsed.data.state?.answers ?? {};
   const priorAsked = parsed.data.state?.asked ?? [];
   const priorBasePaths = parsed.data.state?.basePaths ?? [];
-
   const askedSet = new Set(priorAsked);
 
-  // apply newly answered clarifiers.
-  const answered = parsed.data.answered ?? [];
-  for (const a of answered) priorAnswers[a.id] = a.value;
+  // merge newly submitted answers into state before doing anything else
+  for (const a of parsed.data.answered ?? []) priorAnswers[a.id] = a.value;
+
+  // combine the original query and all answers into search terms for evidence scoring
   const queryTerms = Array.from(
     new Set(
-      [userText, ...Object.values(priorAnswers).map((v) => String(v))]
+      [userText, ...Object.values(priorAnswers).map(String)]
         .join(" ")
         .toLowerCase()
         .split(/\s+/)
@@ -234,157 +419,84 @@ export async function POST(req: Request) {
 
   const mergedQuery = [
     userText,
-    ...Object.values(priorAnswers).map((v) => String(v)),
+    ...Object.values(priorAnswers).map(String),
   ].join(" ");
 
+  // notice selection is cached in state after the first round — no point re-running it
   const basePaths =
     priorBasePaths.length > 0
       ? priorBasePaths
       : await selectNotices(mergedQuery);
 
-  //build the evidence pool based on the user query and the model's picks.
   const evidence = await buildEvidencePool(basePaths, queryTerms);
 
   const evidenceOut = evidence.map((e) => ({
-    //the evidence pool we send to the client and show the model includes the metadata and text snippet for each paragraph.
     url: e.webUrl,
     basePath: e.basePath,
-    paragraphIndex: e.poolIndex, // pool index
-    docParagraphIndex: e.docParagraphIndex, // real doc paragraph index
+    paragraphIndex: e.poolIndex,
+    docParagraphIndex: e.docParagraphIndex,
     snippet: e.text,
   }));
 
-  const MAX_QUESTIONS = 2; //cap to avoid overwhelming the user and encourage critical thinking
-
-  const ModelSchema = z.object({
-    //response schema for model. the model either provides an answer with evidence cites, or asks clarifying questions with evidence cites, but not both.
-    status: z.enum(["ANSWER", "NEED_INFO"]),
-    answer: z
-      .object({
-        conclusion: z.string().min(1),
-        bullets: z
-          .array(
-            z.object({
-              text: z.string().min(1),
-              cites: z.array(z.number().int().nonnegative()).min(1).max(6),
-            }),
-          )
-          .min(1)
-          .max(8),
-        citeParagraphs: z.array(z.number().int().nonnegative()).min(1).max(12),
-      })
-      .nullable(),
-    questions: z.array(QuestionSchema).max(3),
-  });
-
-  const result = await generateObject({
-    model: "openai/gpt-4o-mini",
-    schema: ModelSchema,
-    prompt: [
-      "Task: Determine the VAT liability of the good/service itself (zero/reduced/standard/exempt/out of scope) for the described good/service, using ONLY the evidence provided.",
-      "Do NOT determine VAT reclaim/input tax recovery for the buyer.",
-      "",
-      "Rules:",
-      "- If the query is ambiguous in a way that could change the supply's VAT rate/category (e.g. 'bike' could mean bicycle vs motorbike), return NEED_INFO and ask the minimum clarifier(s) (max " +
-        MAX_QUESTIONS +
-        ").",
-      "- Otherwise, return ANSWER if the evidence supports a conclusion; do not guess.",
-      "- Only ask a question if the answer could change the supply's VAT rate/category. Do NOT ask questions only relevant to input tax recovery (business vs personal use, reclaiming VAT), VAT return process, or bookkeeping.",
-      "- Answer options for each question must reflect distinctions that actually appear in the cited evidence paragraphs and would change the VAT liability conclusion. Do NOT invent categories from general knowledge.",
-      "- Do NOT ask any question whose id appears in Previously asked ids or Answered clarifiers.",
-      "- Every question and every bullet must cite evidence paragraph indices.",
-      "- Your conclusion must be directly applicable to the good/service in the query, not a general statement of law.",
-      "",
-      `User query: ${userText}`,
-      `Answered clarifiers: ${JSON.stringify(priorAnswers)}`,
-      `Previously asked ids: ${JSON.stringify(priorAsked)}`,
-      "",
-      "Evidence (indexed):",
-      evidence.map((p) => `[${p.poolIndex}] ${p.text}`).join("\n\n"),
-      "",
-      "Return JSON only.",
-    ].join("\n"),
-  });
-
-  // validate cites
   const maxIdx = evidence.length;
 
-  if (result.object.status === "ANSWER" && result.object.answer) {
-    //citations are looked up by matching paragraphIndex. equivalent to array indexing, but using find rather than evidenceOut[i]. slower but robust
-    assertInRange(result.object.answer.citeParagraphs, maxIdx);
-    for (const b of result.object.answer.bullets)
-      assertInRange(b.cites, maxIdx);
-  }
-
-  if (result.object.status === "NEED_INFO") {
-    //if model asks questions, validate their citations too.
-    for (const q of result.object.questions)
-      assertInRange(q.citeParagraphs, maxIdx);
-  }
-
-  // suppress repeats (asked or answered), then cap AFTER filtering
-  const rawQuestions =
-    result.object.status === "NEED_INFO" ? result.object.questions : [];
-
-  const filteredQuestions = rawQuestions.filter((q) => {
-    if (askedSet.has(q.id)) return false;
-    if (priorAnswers[q.id] !== undefined) return false;
-    return true;
+  // call 1: read the evidence and decide whether we can answer or need to ask
+  const read = await generateObject({
+    model: "openai/gpt-4o-mini",
+    schema: ReadSchema,
+    prompt: buildReadPrompt(userText, priorAnswers, evidence),
   });
 
-  const questions = filteredQuestions.slice(0, MAX_QUESTIONS);
-  const nextAsked = [...priorAsked, ...questions.map((q) => q.id)];
+  assertInRange(read.object.governingParagraphs, maxIdx);
 
-  // STALL GUARD: model says NEED_INFO but we have nothing new to ask
-  const isStalled =
-    result.object.status === "NEED_INFO" &&
-    questions.length === 0 &&
-    Object.keys(priorAnswers).length > 0;
+  // call 1 says we can answer — no clarification needed
+  if (
+    read.object.status === "ANSWER" &&
+    read.object.conclusion &&
+    read.object.reasoningBullets
+  ) {
+    for (const b of read.object.reasoningBullets)
+      assertInRange(b.cites, maxIdx);
+
+    const citations = pickMinimalCitations(
+      evidenceOut,
+      read.object.reasoningBullets.flatMap((b) => b.cites),
+      { maxTotal: 5, maxPerDoc: 2 },
+    );
+
+    const response: FlowResponse = {
+      state: { answers: priorAnswers, asked: priorAsked, basePaths },
+      questions: [],
+      answer: {
+        conclusion: read.object.conclusion,
+        reasoning: read.object.reasoningBullets.map((b) => b.text),
+      },
+      evidencePool: evidenceOut as any,
+      citations: citations as any,
+    };
+
+    return NextResponse.json(FlowResponseSchema.parse(response));
+  }
+
+  // call 1 says we need clarification — check if we've hit the question cap first
+  const isStalled = priorAsked.length >= 2;
 
   if (isStalled) {
-    const ForceAnswerSchema = z.object({
-      conclusion: z.string().min(1),
-      bullets: z
-        .array(
-          z.object({
-            text: z.string().min(1),
-            cites: z.array(z.number().int().nonnegative()).min(1).max(6),
-          }),
-        )
-        .min(1)
-        .max(8),
-      citeParagraphs: z.array(z.number().int().nonnegative()).min(1).max(12),
-    });
-
+    // we've asked enough questions, force an answer with whatever we know
     const forced = await generateObject({
       model: "openai/gpt-4o-mini",
       schema: ForceAnswerSchema,
-      prompt: [
-        "You are not allowed to repeat questions.",
-        "Either:",
-        "A) Provide the best supported VAT liability conclusion from the evidence, OR",
-        "B) State explicitly: 'Insufficient evidence in the provided VAT notices to determine liability for this query.'",
-        "If B, your bullets must explain what is missing, citing evidence that shows the dependency exists.",
-        "",
-        `User query: ${userText}`,
-        `Answered clarifiers: ${JSON.stringify(priorAnswers)}`,
-        `Previously asked ids: ${JSON.stringify(priorAsked)}`,
-        "",
-        "Evidence (indexed):",
-        evidence.map((p) => `[${p.poolIndex}] ${p.text}`).join("\n\n"),
-        "",
-        "Return JSON only.",
-      ].join("\n"),
+      prompt: buildForceAnswerPrompt(userText, priorAnswers, evidence),
     });
 
     assertInRange(forced.object.citeParagraphs, maxIdx);
     for (const b of forced.object.bullets) assertInRange(b.cites, maxIdx);
 
     const citations = pickMinimalCitations(
-      evidenceOut as any,
+      evidenceOut,
       forced.object.bullets.flatMap((b) => b.cites),
       { maxTotal: 5, maxPerDoc: 2 },
-    ) as any;
+    );
 
     const response: FlowResponse = {
       state: { answers: priorAnswers, asked: priorAsked, basePaths },
@@ -394,33 +506,74 @@ export async function POST(req: Request) {
         reasoning: forced.object.bullets.map((b) => b.text),
       },
       evidencePool: evidenceOut as any,
-      citations,
+      citations: citations as any,
     };
 
     return NextResponse.json(FlowResponseSchema.parse(response));
   }
 
-  const citations =
-    result.object.status === "ANSWER" && result.object.answer
-      ? (pickMinimalCitations(
-          evidenceOut as any,
-          result.object.answer.bullets.flatMap((b) => b.cites),
-          { maxTotal: 5, maxPerDoc: 2 },
-        ) as any)
-      : [];
+  // call 2: generate exactly one question about the unresolved branch call 1 identified
+  const ask = await generateObject({
+    model: "openai/gpt-4o-mini",
+    schema: AskSchema,
+    prompt: buildAskPrompt(
+      userText,
+      priorAsked,
+      read.object.unresolvedBranch ??
+        "the relevant VAT category for this supply",
+      read.object.governingParagraphs,
+      evidence,
+    ),
+  });
+
+  const q = ask.object.question;
+
+  // validate and deduplicate — drop the question if it's already been asked
+  assertInRange(q.citeParagraphs, maxIdx);
+  assertInRange(
+    q.options.map((o) => o.citeParagraph),
+    maxIdx,
+  );
+
+  if (askedSet.has(q.id)) {
+    // model generated a duplicate id despite being told not to — force an answer instead
+    const forced = await generateObject({
+      model: "openai/gpt-4o-mini",
+      schema: ForceAnswerSchema,
+      prompt: buildForceAnswerPrompt(userText, priorAnswers, evidence),
+    });
+
+    assertInRange(forced.object.citeParagraphs, maxIdx);
+    for (const b of forced.object.bullets) assertInRange(b.cites, maxIdx);
+
+    const citations = pickMinimalCitations(
+      evidenceOut,
+      forced.object.bullets.flatMap((b) => b.cites),
+      { maxTotal: 5, maxPerDoc: 2 },
+    );
+
+    const response: FlowResponse = {
+      state: { answers: priorAnswers, asked: priorAsked, basePaths },
+      questions: [],
+      answer: {
+        conclusion: forced.object.conclusion,
+        reasoning: forced.object.bullets.map((b) => b.text),
+      },
+      evidencePool: evidenceOut as any,
+      citations: citations as any,
+    };
+
+    return NextResponse.json(FlowResponseSchema.parse(response));
+  }
+
+  const nextAsked = [...priorAsked, q.id];
 
   const response: FlowResponse = {
     state: { answers: priorAnswers, asked: nextAsked, basePaths },
-    questions,
-    answer:
-      result.object.status === "ANSWER" && result.object.answer
-        ? {
-            conclusion: result.object.answer.conclusion,
-            reasoning: result.object.answer.bullets.map((b) => b.text),
-          }
-        : null,
+    questions: [q] as any,
+    answer: null,
     evidencePool: evidenceOut as any,
-    citations,
+    citations: [],
   };
 
   return NextResponse.json(FlowResponseSchema.parse(response));

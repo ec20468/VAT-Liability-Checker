@@ -12,6 +12,7 @@ export const QuestionSchema = z.object({
         label: z.string().min(1),
         value: z.string().min(1),
         description: z.string().nullable(),
+        citeParagraph: z.number().int().nonnegative(),
       }),
     )
     .min(2),
