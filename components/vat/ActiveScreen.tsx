@@ -45,7 +45,7 @@ export function ActiveScreen({
   setPendingAnswers: (updater: (cur: AnswersMap) => AnswersMap) => void;
 
   answeredChipsByRound: Map<string, AnsweredPair[]>;
-  scrollRef: RefObject<HTMLDivElement | null>;
+  scrollRef: RefObject<HTMLDivElement>;
 
   onSubmitInitial: () => void;
   onSubmitClarifiers: () => void;
