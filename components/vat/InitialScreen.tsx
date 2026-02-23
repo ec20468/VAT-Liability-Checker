@@ -63,17 +63,26 @@ export function InitialScreen({
           opacity: 0.55;
           background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
         }
+
+        /* Stop hover handlers from being the only styling change on touch devices */
+        @media (hover: none) {
+          .findvat-chip:hover {
+            border-color: var(--findvat-border-mid) !important;
+            background: rgba(21, 22, 22, 0.7) !important;
+            color: var(--findvat-text-mid) !important;
+          }
+        }
       `}</style>
 
       <div className="findvat-noise absolute inset-0" />
 
       <header
-        className="relative z-10 h-[58px] px-8 flex items-center justify-between border-b"
+        className="relative z-10 h-[58px] px-4 sm:px-6 lg:px-8 flex items-center justify-between border-b"
         style={{ borderColor: "var(--findvat-border)" }}
       >
-        <div className="flex items-baseline gap-[10px]">
+        <div className="flex items-baseline gap-2 sm:gap-[10px] min-w-0">
           <span
-            className="uppercase font-semibold"
+            className="uppercase font-semibold whitespace-nowrap"
             style={{
               color: "var(--findvat-accent)",
               letterSpacing: "0.12em",
@@ -82,9 +91,10 @@ export function InitialScreen({
           >
             FindVAT
           </span>
+
           <span
             aria-hidden="true"
-            className="inline-block"
+            className="hidden sm:inline-block"
             style={{
               width: 1,
               height: 14,
@@ -92,8 +102,9 @@ export function InitialScreen({
               transform: "translateY(-2px)",
             }}
           />
+
           <span
-            className="uppercase"
+            className="uppercase hidden sm:inline-block truncate"
             style={{
               color: "var(--findvat-text-dim)",
               letterSpacing: "0.18em",
@@ -105,9 +116,9 @@ export function InitialScreen({
           </span>
         </div>
 
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-3 sm:gap-5">
           <span
-            className="inline-flex items-center gap-[7px] uppercase"
+            className="hidden sm:inline-flex items-center gap-[7px] uppercase"
             style={{
               color: "var(--findvat-text-dim)",
               letterSpacing: "0.12em",
@@ -128,7 +139,7 @@ export function InitialScreen({
           </span>
 
           <span
-            className="uppercase border px-[10px] py-[4px]"
+            className="uppercase border px-2 sm:px-[10px] py-[4px]"
             style={{
               borderColor: "var(--findvat-border)",
               color: "var(--findvat-text-dim)",
@@ -142,23 +153,17 @@ export function InitialScreen({
       </header>
 
       <div
-        className="relative z-10 flex-1 flex flex-col items-center justify-center px-[4vw]"
+        className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-[4vw]"
         style={{ paddingBottom: "12vh" }}
       >
-        <div
-          className="w-full flex flex-col items-center"
-          style={{ gap: "2.5vw", maxWidth: "60vw" }}
-        >
-          <div
-            className="text-center"
-            style={{ display: "flex", flexDirection: "column", gap: "1vw" }}
-          >
+        <div className="w-full flex flex-col items-center gap-6 sm:gap-10 max-w-[720px] lg:max-w-[60vw]">
+          <div className="text-center flex flex-col gap-3 sm:gap-[1vw]">
             <p
               className="uppercase"
               style={{
                 color: "var(--findvat-accent)",
                 letterSpacing: "0.22em",
-                fontSize: "clamp(9px, 0.7vw, 12px)",
+                fontSize: "clamp(9px, 2.8vw, 12px)",
               }}
             >
               VAT Liability Classification
@@ -166,20 +171,22 @@ export function InitialScreen({
 
             <h1
               className="text-white font-medium tracking-tight leading-[1.05]"
-              style={{ fontSize: "clamp(28px, 5.2vw, 84px)" }}
+              style={{
+                fontSize: "clamp(26px, 7.2vw, 84px)",
+              }}
             >
               What rate is your{" "}
               <span style={{ color: "var(--findvat-accent)" }}>taxable</span> —
-              <br />
+              <br className="hidden sm:block" />
+              <span className="sm:hidden"> </span>
               supply?
             </h1>
 
             <p
-              className="mx-auto leading-relaxed"
+              className="mx-auto leading-relaxed max-w-[44ch] sm:max-w-[60ch]"
               style={{
                 color: "var(--findvat-text-mid)",
-                fontSize: "clamp(13px, 1.15vw, 16px)",
-                maxWidth: "42vw",
+                fontSize: "clamp(13px, 3.8vw, 16px)",
               }}
             >
               Describe a good or service. We&apos;ll ask clarifiers only when
@@ -187,17 +194,14 @@ export function InitialScreen({
             </p>
           </div>
 
-          <div
-            className="flex flex-wrap justify-center"
-            style={{ gap: 8, maxWidth: 900, width: "100%" }}
-          >
+          <div className="w-full flex flex-wrap justify-center gap-2">
             {chips.map((c) => (
               <button
                 key={c}
                 type="button"
                 disabled={loading}
                 onClick={() => setDraft(c)}
-                className="text-left border px-[14px] py-[8px] transition"
+                className="findvat-chip text-left border px-3 sm:px-[14px] py-2 sm:py-[8px] transition w-full sm:w-auto"
                 style={{
                   borderColor: "var(--findvat-border-mid)",
                   background: "rgba(21,22,22,0.70)",
@@ -232,7 +236,7 @@ export function InitialScreen({
               style={{
                 color: "var(--findvat-text-dim)",
                 letterSpacing: "0.16em",
-                fontSize: "clamp(9px, 0.7vw, 11px)",
+                fontSize: "clamp(9px, 2.8vw, 11px)",
               }}
             >
               Describe the supply
@@ -246,20 +250,23 @@ export function InitialScreen({
               disabled={loading}
             />
 
-            <div
-              className="mt-3 flex items-center justify-between"
-              style={{
-                color: "var(--findvat-text-dim)",
-                fontSize: "clamp(9px, 0.75vw, 11px)",
-                letterSpacing: "0.06em",
-              }}
-            >
-              <span>Press Enter to send · Shift+Enter for new line</span>
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <span
-                className="border px-2 py-[2px] uppercase"
+                style={{
+                  color: "var(--findvat-text-dim)",
+                  fontSize: "clamp(9px, 2.8vw, 11px)",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Press Enter to send · Shift+Enter for new line
+              </span>
+
+              <span
+                className="border px-2 py-[2px] uppercase self-center sm:self-auto"
                 style={{
                   borderColor: "var(--findvat-border)",
-                  fontSize: "clamp(8px, 0.65vw, 10px)",
+                  color: "var(--findvat-text-dim)",
+                  fontSize: "clamp(8px, 2.4vw, 10px)",
                   letterSpacing: "0.1em",
                 }}
               >
@@ -268,26 +275,21 @@ export function InitialScreen({
             </div>
           </div>
 
-          <div
-            className="w-full flex flex-col items-center justify-center"
-            style={{ minHeight: "2vw" }}
-          >
+          <div className="w-full flex flex-col items-center justify-center min-h-[28px] sm:min-h-[2vw]">
             {loading && (
               <div
                 className="flex items-center font-medium animate-pulse"
                 style={{
-                  gap: "0.6vw",
+                  gap: 10,
                   color: "var(--findvat-text-dim)",
-                  fontSize: "clamp(11px, 0.8vw, 14px)",
+                  fontSize: "clamp(11px, 3.2vw, 14px)",
                 }}
               >
                 <div
                   className="rounded-full"
                   style={{
-                    width: "0.5vw",
-                    height: "0.5vw",
-                    minWidth: 8,
-                    minHeight: 8,
+                    width: 8,
+                    height: 8,
                     background: "var(--findvat-accent)",
                     boxShadow: "0 0 10px rgba(29,112,184,0.55)",
                   }}
@@ -308,7 +310,7 @@ export function InitialScreen({
                   className="leading-relaxed"
                   style={{
                     color: "rgba(252,165,165,0.95)",
-                    fontSize: "clamp(11px, 0.8vw, 14px)",
+                    fontSize: "clamp(11px, 3.2vw, 14px)",
                   }}
                 >
                   {error}
@@ -320,15 +322,15 @@ export function InitialScreen({
       </div>
 
       <footer
-        className="relative z-10 py-[1.5vh] text-center border-t"
+        className="relative z-10 py-3 sm:py-[1.5vh] text-center border-t"
         style={{ borderColor: "var(--findvat-border)" }}
       >
         <p
-          className="font-semibold uppercase"
+          className="font-semibold uppercase px-4"
           style={{
             color: "rgba(243,242,241,0.22)",
             letterSpacing: "0.25em",
-            fontSize: "clamp(8px, 0.4vw, 11px)",
+            fontSize: "clamp(8px, 2.4vw, 11px)",
           }}
         >
           VAT Engine v5.2 · UK Statutory Guidance 2026
