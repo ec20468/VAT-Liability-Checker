@@ -31,9 +31,6 @@ export function InitialScreen({
       "Is children's clothing zero-rated or exempt?",
       "What rate applies to hot takeaway food?",
       "Is residential construction standard or zero-rated?",
-      "Are financial advisory services exempt from VAT?",
-      "VAT liability on e-books vs printed books?",
-      "Is private tutoring exempt from VAT?",
     ],
     [],
   );
