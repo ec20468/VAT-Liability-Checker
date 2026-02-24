@@ -42,14 +42,12 @@ export function InitialScreen({
   };
 
   return (
-    <main className="min-h-dvh flex flex-col relative overflow-hidden">
+    <main className="min-h-dvh flex flex-col relative overflow-hidden bg-black">
       <style jsx global>{`
         :root {
           --findvat-border: #252828;
           --findvat-border-mid: #313535;
           --findvat-accent: #1d70b8;
-          --findvat-accent-dim: #135896;
-          --findvat-accent-glow: rgba(29, 112, 184, 0.1);
           --findvat-text-mid: #b1b4b6;
           --findvat-text-dim: #6f777b;
         }
@@ -71,167 +69,92 @@ export function InitialScreen({
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
-
-        .findvat-noise ~ div input,
-        .findvat-noise ~ div textarea {
-          color: #dcdcdc !important;
-          caret-color: #1d70b8;
-        }
       `}</style>
 
       <div className="findvat-noise absolute inset-0" />
 
+      {/* HEADER: Explicit Grid for perfect vertical centering */}
       <header
-        className="relative z-10 h-[58px] px-4 md:px-8 flex items-center justify-between border-b"
-        style={{ borderColor: "var(--findvat-border)" }}
+        className="relative z-20 w-full h-[64px] border-b grid grid-cols-2 px-4 md:px-8 items-center"
+        style={{
+          borderColor: "var(--findvat-border)",
+          backgroundColor: "rgba(0,0,0,0.8)",
+        }}
       >
-        <div className="flex items-center gap-[10px]">
+        <div className="flex items-center gap-3">
           <span
-            className="uppercase font-semibold"
+            className="uppercase font-bold leading-none"
             style={{
               color: "var(--findvat-accent)",
-              letterSpacing: "0.12em",
-              fontSize: "clamp(18px, 4vw, 22px)",
+              letterSpacing: "0.1em",
+              fontSize: "20px",
             }}
           >
             FindVAT
           </span>
-          <span
-            aria-hidden="true"
-            className="hidden sm:inline-block"
-            style={{
-              width: 1,
-              height: 14,
-              background: "var(--findvat-border-mid)",
-              transform: "translateY(-2px)",
-            }}
-          />
-          <span
-            className="uppercase hidden md:inline-block"
-            style={{
-              color: "var(--findvat-text-dim)",
-              letterSpacing: "0.18em",
-              fontSize: 10,
-              fontWeight: 300,
-            }}
-          >
-            VAT Liability Advisor
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3 md:gap-5">
-          <span
-            className="inline-flex items-center gap-[7px] uppercase"
-            style={{
-              color: "var(--findvat-text-dim)",
-              letterSpacing: "0.12em",
-              fontSize: 10,
-            }}
-          >
-            <span
-              aria-hidden="true"
-              className="inline-block rounded-full"
+          <div className="hidden md:flex items-center gap-3">
+            <div
               style={{
-                width: 6,
-                height: 6,
-                background: "#4caf82",
-                boxShadow: "0 0 6px rgba(76,175,130,0.5)",
+                width: 1,
+                height: 16,
+                background: "var(--findvat-border-mid)",
               }}
             />
-            <span className="hidden xs:inline">System live</span>
-          </span>
+            <span className="uppercase text-[10px] text-[var(--findvat-text-dim)] tracking-widest">
+              VAT Liability Advisor
+            </span>
+          </div>
+        </div>
 
-          <span
-            className="uppercase border px-[8px] py-[3px] md:px-[10px] md:py-[4px]"
-            style={{
-              borderColor: "var(--findvat-border)",
-              color: "var(--findvat-text-dim)",
-              letterSpacing: "0.1em",
-              fontSize: 10,
-            }}
+        <div className="flex justify-end items-center gap-4">
+          <div className="hidden sm:flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#4caf82] shadow-[0_0_8px_#4caf82]" />
+            <span className="uppercase text-[9px] text-[var(--findvat-text-dim)] tracking-widest">
+              System Live
+            </span>
+          </div>
+          <div
+            className="border px-2 py-1 uppercase text-[9px] text-[var(--findvat-text-dim)] tracking-tighter"
+            style={{ borderColor: "var(--findvat-border)" }}
           >
-            <span className="md:hidden">UK · 25/26</span>
-            <span className="hidden md:inline">UK VAT · 2025/26</span>
-          </span>
+            UK · 2025/26
+          </div>
         </div>
       </header>
 
-      <div
-        className="relative z-10 flex-1 flex flex-col items-center justify-center px-[4vw]"
-        style={{
-          paddingTop: "clamp(12px, 3vh, 40px)",
-          paddingBottom: "clamp(12px, 3vh, 40px)",
-        }}
-      >
-        <div
-          className="w-full flex flex-col items-center"
-          style={{
-            gap: "clamp(16px, 2.5vw, 36px)",
-            maxWidth: "clamp(320px, 90vw, 680px)",
-          }}
-        >
-          <div
-            className="text-center"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "clamp(8px, 1vw, 16px)",
-            }}
-          >
+      {/* MAIN CONTENT: Added padding-top to prevent "VAT Liability Classification" from hitting the header */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pt-12 pb-8">
+        <div className="w-full max-w-[640px] flex flex-col items-center gap-8 md:gap-12">
+          <div className="text-center flex flex-col gap-4">
             <p
-              className="uppercase"
-              style={{
-                color: "var(--findvat-accent)",
-                letterSpacing: "0.22em",
-                fontSize: "clamp(9px, 0.7vw, 12px)",
-                marginTop: "clamp(8px, 2vh, 24px)",
-              }}
+              className="uppercase font-medium tracking-[0.3em] text-[var(--findvat-accent)]"
+              style={{ fontSize: "10px" }}
             >
               VAT Liability Classification
             </p>
 
-            <h1
-              className="text-white font-medium tracking-tight leading-[1.05]"
-              style={{ fontSize: "clamp(28px, 5.2vw, 84px)" }}
-            >
+            <h1 className="text-white font-semibold tracking-tight leading-[1.1] text-4xl md:text-6xl">
               Is your supply{" "}
-              <span style={{ color: "var(--findvat-accent)" }}>taxable</span> —
-              <br />
-              and at what rate?
+              <span className="text-[var(--findvat-accent)]">taxable</span>?
             </h1>
 
-            <p
-              className="mx-auto leading-relaxed"
-              style={{
-                color: "var(--findvat-text-mid)",
-                fontSize: "clamp(13px, 1.15vw, 16px)",
-                maxWidth: "clamp(280px, 80vw, 560px)",
-              }}
-            >
+            <p className="text-[var(--findvat-text-mid)] text-sm md:text-base max-w-[480px] mx-auto leading-relaxed">
               Describe a good or service. We&apos;ll ask clarifiers only when
               they would change the VAT result.
             </p>
           </div>
 
-          <div
-            className="flex flex-nowrap overflow-x-auto md:flex-wrap md:justify-center w-full no-scrollbar px-2"
-            style={{ gap: 8, maxWidth: 900 }}
-          >
+          {/* CHIPS: Vertical stack for Mobile to match your screenshot, Grid for Desktop */}
+          <div className="w-full flex flex-col md:flex-row md:flex-wrap md:justify-center gap-2">
             {chips.map((c) => (
               <button
                 key={c}
                 type="button"
-                disabled={loading}
                 onClick={() => setDraft(c)}
-                className="text-left border px-[14px] py-[8px] transition flex-shrink-0 md:flex-shrink"
+                className="w-full md:w-auto text-left border px-4 py-3 text-[var(--findvat-text-mid)] text-xs transition-colors hover:border-[var(--findvat-accent)]"
                 style={{
                   borderColor: "var(--findvat-border-mid)",
-                  background: "rgba(21,22,22,0.70)",
-                  color: "var(--findvat-text-mid)",
-                  fontSize: 11,
-                  letterSpacing: "0.04em",
-                  lineHeight: 1.4,
-                  cursor: loading ? "not-allowed" : "pointer",
+                  background: "rgba(255,255,255,0.03)",
                 }}
               >
                 {c}
@@ -239,18 +162,10 @@ export function InitialScreen({
             ))}
           </div>
 
-          <div className="w-full">
-            <div
-              className="uppercase mb-2"
-              style={{
-                color: "var(--findvat-text-dim)",
-                letterSpacing: "0.16em",
-                fontSize: "clamp(9px, 0.7vw, 11px)",
-              }}
-            >
+          <div className="w-full flex flex-col gap-2">
+            <label className="uppercase text-[9px] tracking-widest text-[var(--findvat-text-dim)]">
               Describe the supply
-            </div>
-
+            </label>
             <PlaceholdersAndVanishInput
               placeholders={placeholders}
               value={draft}
@@ -258,93 +173,24 @@ export function InitialScreen({
               onSubmit={handleSubmit}
               disabled={loading}
             />
-
-            <div
-              className="mt-3 flex items-center justify-between"
-              style={{
-                color: "var(--findvat-text-dim)",
-                fontSize: "clamp(9px, 0.75vw, 11px)",
-                letterSpacing: "0.06em",
-              }}
-            >
+            <div className="flex justify-between items-center text-[9px] text-[var(--findvat-text-dim)] tracking-wide pt-1">
               <span className="hidden sm:inline">
                 Press Enter to send · Shift+Enter for new line
               </span>
               <span className="sm:hidden">Press Enter to send</span>
-              <span
-                className="border px-2 py-[2px] uppercase"
-                style={{
-                  borderColor: "var(--findvat-border)",
-                  fontSize: "clamp(8px, 0.65vw, 10px)",
-                  letterSpacing: "0.1em",
-                }}
-              >
+              <span className="border px-1.5 py-0.5 border-[var(--findvat-border)] uppercase">
                 Not legal advice
               </span>
             </div>
-          </div>
-
-          <div
-            className="w-full flex flex-col items-center justify-center"
-            style={{ minHeight: "2vw" }}
-          >
-            {loading && (
-              <div
-                className="flex items-center font-medium animate-pulse"
-                style={{
-                  gap: "10px",
-                  color: "var(--findvat-text-dim)",
-                  fontSize: "clamp(11px, 0.8vw, 14px)",
-                }}
-              >
-                <div
-                  className="rounded-full"
-                  style={{
-                    width: 8,
-                    height: 8,
-                    background: "var(--findvat-accent)",
-                    boxShadow: "0 0 10px rgba(29,112,184,0.55)",
-                  }}
-                />
-                Analyzing...
-              </div>
-            )}
-
-            {error && (
-              <div
-                className="w-full rounded-xl border px-4 py-3"
-                style={{
-                  borderColor: "rgba(239,68,68,0.25)",
-                  background: "rgba(239,68,68,0.08)",
-                }}
-              >
-                <p
-                  className="leading-relaxed"
-                  style={{
-                    color: "rgba(252,165,165,0.95)",
-                    fontSize: "clamp(11px, 0.8vw, 14px)",
-                  }}
-                >
-                  {error}
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
       <footer
-        className="relative z-10 py-[1.5vh] text-center border-t mt-auto"
+        className="relative z-10 py-6 border-t flex justify-center items-center"
         style={{ borderColor: "var(--findvat-border)" }}
       >
-        <p
-          className="font-semibold uppercase"
-          style={{
-            color: "rgba(243,242,241,0.22)",
-            letterSpacing: "0.25em",
-            fontSize: "clamp(8px, 0.4vw, 11px)",
-          }}
-        >
+        <p className="uppercase text-[9px] tracking-[0.4em] text-white/20 font-bold">
           VAT Engine v5.2 · UK Statutory Guidance 2026
         </p>
       </footer>
