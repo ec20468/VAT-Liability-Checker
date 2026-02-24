@@ -189,7 +189,7 @@ export function InitialScreen({
               style={{ fontSize: "clamp(28px, 5.2vw, 84px)" }}
             >
               Is your supply{" "}
-              <span style={{ color: "var(--findvat-accent)" }}>taxable</span> —
+              <span style={{ color: "var(--findvat-accent)" }}>taxable</span> -
               <br />
               and at what rate?
             </h1>
