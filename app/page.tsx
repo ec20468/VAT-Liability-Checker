@@ -5,7 +5,6 @@ import type { FlowResponse } from "@/lib/schemas/flow";
 
 import { PasswordGate } from "@/components/vat/PasswordGate";
 import { InitialScreen } from "@/components/vat/InitialScreen";
-
 import { AnswerScreen } from "@/components/vat/AnswerScreen";
 import { ClarifierScreen } from "@/components/vat/ClarifierScreen";
 import { LoadingScreen } from "@/components/vat/LoadingScreen";
