@@ -1,3 +1,14 @@
+// route.ts — streaming VAT pipeline (NDJSON)
+//
+// This route streams newline-delimited JSON events so the UI can show progress while the model runs.
+// Format (one JSON object per line):
+//   { type: "progress", stage: string, detail?: string }
+//   { type: "done", payload: FlowResponse }
+//   { type: "error", message: string }
+//
+// Stage strings ("classifying", "fetching_notices", etc) are consumed by the loading UI.
+// Keep stage names stable unless you update the frontend too.
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateObject } from "ai";
@@ -10,38 +21,75 @@ import {
   type FlowResponse,
 } from "@/lib/schemas/flow";
 
+// Types used inside this route only.
+// EvidencePara = a paragraph we might cite, flattened into one pool with stable indices.
+// ProgressEvent = the NDJSON “event” object we stream to the client.
+
 type EvidencePara = {
-  poolIndex: number; // index in the flattened evidence pool we send to the model
-  basePath: string; // gov.uk basePath for the notice
-  webUrl: string; // public URL for citations UI
-  docParagraphIndex: number; // paragraph index inside that notice doc
-  text: string; // paragraph text
+  poolIndex: number;
+  basePath: string;
+  webUrl: string;
+  docParagraphIndex: number;
+  text: string;
 };
 
-//Select VAT notices to read
-// Goal: pick a small set of notices that are actually relevant to the user's supply.
-// do it in two stages because:
-// - pure keyword search is cheap but dumb
-// - model is smarter but needs a shortlist so it can’t wander
+type ProgressEvent =
+  | { type: "progress"; stage: string; detail?: string }
+  | { type: "done"; payload: FlowResponse }
+  | { type: "error"; message: string };
 
-// Cheap relevance signal: how many query words appear in the notice title.
+// Streaming helper.
+// Emits NDJSON lines: JSON.stringify(event) + "\n".
+// Client should read the response stream and parse per line (not res.json()).
+
+function createStream() {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController;
+
+  const stream = new ReadableStream({
+    start(c) {
+      controller = c;
+    },
+  });
+
+  function emit(event: ProgressEvent) {
+    controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+  }
+
+  function close() {
+    controller.close();
+  }
+
+  return { stream, emit, close };
+}
+
+// -------- Notice selection (cheap narrowing step) --------
+// scoreTitle: crude keyword matching against notice titles.
+// selectNotices:
+//   1) ask model for 1–3 generic “supply descriptions” (worded like notice titles)
+//   2) rank notices using those words
+//   3) ask model to pick the minimum set of notices from the ranked candidate list
+// Output = list of basePath strings (deduped, validated).
+
 function scoreTitle(title: string, words: string[]) {
   const t = title.toLowerCase();
   return words.reduce((s, w) => (t.includes(w) ? s + 1 : s), 0);
 }
 
-// Two-stage notice selection:
-// 1) model converts the user query into short “notice-title-like” supply descriptions
-//    (and returns up to 3 if the query could mean different supplies)
-// 2) do title overlap scoring to build a shortlist
-// 3) model picks the minimum set of notices from the shortlist
-//
-// Reason: “bike” can mean a bicycle or a motorcycle and the VAT treatment can differ.
-// I’d rather over-include a few candidate notices than silently commit to one meaning.
-async function selectNotices(userText: string, maxPick = 5) {
+async function selectNotices(
+  userText: string,
+  emit: (e: ProgressEvent) => void,
+  maxPick = 5,
+) {
   const index = await getVatNoticesIndex();
 
-  // classify the supply into generic words that would plausibly appear in notice titles.
+  // UI stage: model is classifying the query into a generic supply category.
+  emit({
+    type: "progress",
+    stage: "classifying",
+    detail: "Classifying your supply…",
+  });
+
   const classified = await generateObject({
     model: "openai/gpt-4o-mini",
     schema: z.object({
@@ -63,7 +111,7 @@ async function selectNotices(userText: string, maxPick = 5) {
     ].join("\n"),
   });
 
-  // build a union word-set across all interpretations (covers ambiguity safely).
+  // Tokenise the supply descriptions into words for title scoring.
   const words = Array.from(
     new Set(
       classified.object.supplyDescriptions
@@ -74,17 +122,25 @@ async function selectNotices(userText: string, maxPick = 5) {
     ),
   );
 
-  // pre-rank and take a shortlist for the model to choose from.
+  // Rank all notices by crude title match score; then keep a candidate shortlist.
   const ranked = index
     .map((n) => ({ ...n, score: scoreTitle(n.title, words) }))
     .sort((a, b) => b.score - a.score);
 
   const candidates = ranked.slice(0, 30);
 
+  // UI stage: selecting notices. The detail string is shown directly in the loader.
+  emit({
+    type: "progress",
+    stage: "selecting_notices",
+    detail: classified.object.isAmbiguous
+      ? `Ambiguous supply — checking ${classified.object.supplyDescriptions.length} interpretations`
+      : `Identified as: ${classified.object.supplyDescriptions[0]}`,
+  });
+
+  // Ask the model to pick the minimum basePaths from the candidate list.
   const PickSchema = z.object({ picks: z.array(z.string()).max(maxPick) });
 
-  // Step 1d: model selects the minimum set from the shortlist.
-  // Notice 700 is explicitly “last resort” so it doesn’t default to the general guide. - this is because the model kept defaulting to this one
   const picked = await generateObject({
     model: "openai/gpt-4o-mini",
     schema: PickSchema,
@@ -105,22 +161,24 @@ async function selectNotices(userText: string, maxPick = 5) {
     ].join("\n"),
   });
 
-  // Guardrail: validate picks against the real index.
-  // Models sometimes hallucinate a basePath even when told not to.
+  // Validate model output against the known index (prevents hallucinated basePaths).
   const allowed = new Set(index.map((i) => i.basePath));
   const valid = picked.object.picks.filter((p) => allowed.has(p));
 
-  // Fallback: if the model returns nothing usable, take the top overlap matches.
+  // Fallback: if model output is empty/invalid, use the top few ranked notices.
   return valid.length
     ? Array.from(new Set(valid))
     : ranked.slice(0, 3).map((r) => r.basePath);
 }
 
-// 2. Build an evidence pool
-// Goal: keep context small enough to be reliable while still giving the model the paragraphs that actually say “zero-rated / exempt / standard-rated” etc etc
+// -------- Evidence scoring / pooling --------
+// scoreParagraph: crude term matching + small boost for VAT treatment keywords.
+// buildEvidencePool:
+//   - fetch notice docs for chosen basePaths
+//   - pick top paragraphs per doc
+//   - then re-rank globally and cap total
+// Output = EvidencePara[] with stable poolIndex (used as cite ids everywhere else).
 
-// Barebones scoring: term frequency + a small boost for explicit VAT treatment language.
-// This is NOT “semantic search”. It’s just pruning.
 function scoreParagraph(text: string, terms: string[]) {
   const t = text.toLowerCase();
   let score = 0;
@@ -128,8 +186,6 @@ function scoreParagraph(text: string, terms: string[]) {
     if (!term) continue;
     if (t.includes(term)) score += 1;
   }
-
-  // Boost paragraphs that explicitly state a VAT treatment.
   if (
     t.includes("zero-rated") ||
     t.includes("standard-rated") ||
@@ -138,24 +194,38 @@ function scoreParagraph(text: string, terms: string[]) {
   ) {
     score += 2;
   }
-
   return score;
 }
 
-// Pull all selected notices, score paragraphs, and keep the best ones.
-// The model does the real “reading” later — this step is jus about context budgeting.
-async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
+async function buildEvidencePool(
+  basePaths: string[],
+  queryTerms: string[],
+  emit: (e: ProgressEvent) => void,
+) {
+  // UI stage: fetching notice docs
+  emit({
+    type: "progress",
+    stage: "fetching_notices",
+    detail: `Reading ${basePaths.length} VAT notice${basePaths.length > 1 ? "s" : ""}…`,
+  });
+
   const docs = await Promise.all(basePaths.map(resolveGovUkDoc));
 
-  const PER_DOC = 40; // keep up to 40 paragraphs per notice
-  const MAX_TOTAL = 160; // hard cap overall
+  // UI stage: scoring paragraphs
+  emit({
+    type: "progress",
+    stage: "scoring_paragraphs",
+    detail: "Scoring paragraphs for relevance…",
+  });
+
+  // Limits: cap per doc + cap total so the prompt stays bounded.
+  const PER_DOC = 40;
+  const MAX_TOTAL = 160;
 
   const candidates: Omit<EvidencePara, "poolIndex">[] = [];
   const seen = new Set<string>();
 
   for (const doc of docs) {
-    // Score paragraphs, drop score=0, keep top PER_DOC.
-    // Slice(0, 800) is a practical limit so it don’t scan massive docs endlessly.
     const top = doc.paragraphs
       .slice(0, 800)
       .map((p) => ({ p, s: scoreParagraph(p.text, queryTerms) }))
@@ -163,12 +233,11 @@ async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
       .sort((a, b) => b.s - a.s)
       .slice(0, PER_DOC);
 
-    // Deduplicate per (doc + paragraph index).
+    // Deduplicate paragraphs across docs by (basePath + paragraph index).
     for (const { p } of top) {
       const key = `${doc.basePath}:${p.index}`;
       if (seen.has(key)) continue;
       seen.add(key);
-
       candidates.push({
         basePath: doc.basePath,
         webUrl: doc.webUrl,
@@ -178,7 +247,7 @@ async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
     }
   }
 
-  // Re-rank globally and trim to MAX_TOTAL, then assign pool indices.
+  // Global re-rank and assign poolIndex (this becomes the cite id).
   return candidates
     .map((e) => ({ e, s: scoreParagraph(e.text, queryTerms) }))
     .sort((a, b) => b.s - a.s)
@@ -187,11 +256,11 @@ async function buildEvidencePool(basePaths: string[], queryTerms: string[]) {
     .map((e, i) => ({ ...e, poolIndex: i }));
 }
 
-// Citation helpers
-// Goal: stop the model citing random indices and keep the citations panel readable.
+// -------- Citation safety helpers --------
+// localWindow: build an allowed set around indices (prevents far-away/hallucinated blockers).
+// filterLocal: keep only indices in the allowed set.
+// assertInRange: hard guardrail so we never emit out-of-range cite indices.
 
-// Build a local “allowed set” around the support paragraphs (±window).
-// If a blocker cite isn’t near the support cite, treat it as suspicious.
 function localWindow(indices: number[], maxExclusive: number, window = 1) {
   const s = new Set<number>();
   for (const idx of indices) {
@@ -207,8 +276,6 @@ function filterLocal(indices: number[] | undefined, allowed: Set<number>) {
   return indices.filter((i) => allowed.has(i));
 }
 
-// Hard guardrail: if the model gives a cite index outside the evidence pool, fail loudly.
-// Better to 500 than show a wrong source.
 function assertInRange(indices: number[], maxExclusive: number) {
   for (const n of indices) {
     if (!Number.isInteger(n) || n < 0 || n >= maxExclusive) {
@@ -217,8 +284,9 @@ function assertInRange(indices: number[], maxExclusive: number) {
   }
 }
 
-// Trim citations down to something a human can actually read.
-// Also cap per-doc so one notice can’t dominate the thing.
+// pickMinimalCitations: select a small set of citations from used indices.
+// Caps total citations + caps per doc to keep the UI readable.
+
 function pickMinimalCitations(
   evidenceOut: Array<{
     url: string;
@@ -233,7 +301,7 @@ function pickMinimalCitations(
   const maxTotal = opts?.maxTotal ?? 5;
   const maxPerDoc = opts?.maxPerDoc ?? 2;
 
-  // Deduplicate while preserving order.
+  // Dedup used indices while preserving first-seen order.
   const uniqueUsed: number[] = [];
   const seen = new Set<number>();
   for (const i of usedIndices) {
@@ -252,33 +320,23 @@ function pickMinimalCitations(
   for (const idx of uniqueUsed) {
     const e = byIndex.get(idx);
     if (!e) continue;
-
     const c = perDocCount.get(e.basePath) ?? 0;
     if (c >= maxPerDoc) continue;
-
     picked.push(e);
     perDocCount.set(e.basePath, c + 1);
-
     if (picked.length >= maxTotal) break;
   }
 
   return picked;
 }
-// Confidence. deterministic computation of whether the answer is likely to be incomplete
-// Goal: the frontend needs a “this might be incomplete” signal without asking the model.
 
-// needsReview flips on when retrieval probably failed / answer isn’t explicitly grounded.
-// I only want to look confident when the citations actually contain rate language.
-function computeNeedsReview(
-  basePaths: string[],
-  citedSnippets: string[],
-): boolean {
-  // If i only selected notice 700, odds are it missed a specific notice.
+// computeNeedsReview: conservative flag for cases where the answer probably needs eyeballing.
+// True when we only used the general guide (700) or we never cite a paragraph that explicitly states treatment words.
+
+function computeNeedsReview(basePaths: string[], citedSnippets: string[]) {
   const onlyGeneralGuide = basePaths.every((p) =>
     p.includes("vat-guide-notice-700"),
   );
-
-  // If none of the cited paragraphs explicitly state a treatment, the answer is shaky.
   const hasExplicitTreatment = citedSnippets.some(
     (s) =>
       s.includes("zero-rated") ||
@@ -286,15 +344,34 @@ function computeNeedsReview(
       s.includes("reduced rate") ||
       s.includes("exempt"),
   );
-
   return onlyGeneralGuide || !hasExplicitTreatment;
 }
 
-// Schemas
-// Goal: force the model into a tight shape so it can’t “vibe” the answer.
+// buildSupplyContext: inject “fixed attributes” so the model treats prior answers as hard constraints.
+// This is here to stop repeated questions and stop it from “assuming away” conditions.
 
-// Each option must cite the paragraph that defines it.
-// This is the core fix for “invented categories” — if it can’t cite, it can’t offer it.
+function buildSupplyContext(
+  userText: string,
+  priorAnswers: Record<string, string>,
+) {
+  const facts = Object.values(priorAnswers);
+  if (facts.length === 0) return `ITEM TO CLASSIFY: ${userText}`;
+  return [
+    `ITEM TO CLASSIFY: ${userText}`,
+    `FIXED ATTRIBUTES (MANDATORY CONSTRAINTS):`,
+    ...facts.map((v) => `- ${v}`),
+    "",
+    "INSTRUCTIONS:",
+    "1. You must treat FIXED ATTRIBUTES as absolute truth.",
+    "2. If a legal branch in a VAT notice is resolved by an attribute (e.g., if 'Cold food' is confirmed, you must skip the 'Hot food' rules), you are FORBIDDEN from asking about it again.",
+    "3. Do not ask the user to choose legal labels like 'Catering' or 'Excepted Item'. Ask for physical facts (e.g., 'Is it sold in a sealed bag?').",
+  ].join("\n");
+}
+
+// Zod schemas for model outputs.
+// These schemas are the contract between the route and the model output.
+// If you change them, also check prompts + frontend expectations.
+
 const OptionSchema = z.object({
   value: z.string(),
   label: z.string(),
@@ -310,21 +387,11 @@ const QuestionSchema = z.object({
   citeParagraphs: z.array(z.number().int().nonnegative()).min(1),
 });
 
-// Call 1 result: model reads evidence and decides whether it can answer now or needs one clarifier.
-// Splitting “read/decide” from “ask” keeps the first call focused on evidence.
 const ReadSchema = z.object({
   status: z.enum(["ANSWER", "NEED_CLARIFICATION"]),
-
-  // always present
   supportCites: z.array(z.number().int().nonnegative()).min(1).max(3),
-
-  // always present (empty array when not applicable)
   blockerCites: z.array(z.number().int().nonnegative()).max(6),
-
-  // always present (null when not applicable)
   conclusion: z.string().nullable(),
-
-  // always present (null when not applicable)
   reasoningBullets: z
     .array(
       z.object({
@@ -333,18 +400,11 @@ const ReadSchema = z.object({
       }),
     )
     .nullable(),
-
-  // always present (null when not applicable)
   unresolvedBranch: z.string().nullable(),
 });
 
-// Call 2 result: only if call 1 returns NEED_CLARIFICATION.
-// Generates exactly one question that resolves the unresolved branch.
-const AskSchema = z.object({
-  question: QuestionSchema,
-});
+const AskSchema = z.object({ question: QuestionSchema });
 
-// Stall guard: if it hit s the question cap, force the most specific conditional answer possible.
 const ForceAnswerSchema = z.object({
   conclusion: z.string().min(1),
   bullets: z
@@ -359,31 +419,10 @@ const ForceAnswerSchema = z.object({
   citeParagraphs: z.array(z.number().int().nonnegative()).min(1).max(12),
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Supply context builder
-// Goal: treat answered clarifiers as facts so it dont keep repeating the same questions
-
-function buildSupplyContext(
-  userText: string,
-  priorAnswers: Record<string, string>,
-): string {
-  const facts = Object.values(priorAnswers);
-  if (facts.length === 0) return `ITEM TO CLASSIFY: ${userText}`;
-
-  return [
-    `ITEM TO CLASSIFY: ${userText}`,
-    `FIXED ATTRIBUTES (MANDATORY CONSTRAINTS):`,
-    ...facts.map((v) => `- ${v}`),
-    "",
-    "INSTRUCTIONS:",
-    "1. You must treat FIXED ATTRIBUTES as absolute truth.",
-    "2. If a legal branch in a VAT notice is resolved by an attribute (e.g., if 'Cold food' is confirmed, you must skip the 'Hot food' rules), you are FORBIDDEN from asking about it again.",
-    "3. Do not ask the user to choose legal labels like 'Catering' or 'Excepted Item'. Ask for physical facts (e.g., 'Is it sold in a sealed bag?').",
-  ].join("\n");
-}
-
-// Multi-step prompts
-// Structure: Call 1 reads + decides. Call 2 asks exactly one question if needed.
+// Prompt builders.
+// buildReadPrompt: model must either answer (with bullet cites) or return NEED_CLARIFICATION with a concrete unresolved fact.
+// buildAskPrompt: generate exactly one question with options, each option tied to a cite.
+// buildForceAnswerPrompt: used when we’ve hit the question limit; returns conditional rules instead of looping.
 
 function buildReadPrompt(
   userText: string,
@@ -391,7 +430,6 @@ function buildReadPrompt(
   evidence: EvidencePara[],
 ) {
   const supplyContext = buildSupplyContext(userText, priorAnswers);
-
   return [
     "You are a Senior VAT Auditor. Your job is to find the legal VAT rate using ONLY the provided evidence.",
     "",
@@ -456,11 +494,9 @@ function buildAskPrompt(
   blockerCites: number[],
   evidence: EvidencePara[],
 ) {
-  // Call 2 needs to see the same supply facts, otherwise it will re-ask stuff we already know.
   const supplyContext = buildSupplyContext(userText, priorAnswers);
 
-  // Only show evidnece around the actual support+blocker cites (+/-2).
-  // keeps the question anchored to the precise blocking condition.
+  // Build a local evidence slice around support + blocker cites to keep the ask prompt tight.
   const indices = new Set<number>([...supportCites, ...blockerCites]);
   for (const idx of Array.from(indices)) {
     for (let j = idx - 2; j <= idx + 2; j++) {
@@ -481,7 +517,7 @@ function buildAskPrompt(
     "- Do NOT ask the user to make legal classifications.",
     "- Options must NOT be VAT rates.",
     "- Each option MUST cite the paragraph that defines the option/branch.",
-    "- option.value MUST be a short stable token (e.g., YES/NO, HOT/NOT_HOT) so answers persist reliably.",
+    "- option.value MUST be a short stable token (e.g., YES/NO, HOT/NOT_HOT)",
     `- Do NOT use any of these question ids: ${JSON.stringify(priorAsked)}`,
     "",
     supplyContext,
@@ -500,15 +536,12 @@ function buildAskPrompt(
   ].join("\n");
 }
 
-// Fires when it hits the question cap.
-//still want something useful: conditional rules by branch are better than refusing.
 function buildForceAnswerPrompt(
   userText: string,
   priorAnswers: Record<string, string>,
   evidence: EvidencePara[],
 ) {
   const supplyContext = buildSupplyContext(userText, priorAnswers);
-
   return [
     "You have already asked the maximum number of clarifying questions.",
     "Give the most specific VAT liability conclusion the evidence supports given what you know.",
@@ -529,17 +562,12 @@ function buildForceAnswerPrompt(
   ].join("\n");
 }
 
-// Route handler
+// Route handler.
+// Runs the pipeline async and streams ProgressEvents as each stage completes.
 
 export async function POST(req: Request) {
   const raw = await req.json().catch(() => null);
   const parsed = FlowRequestSchema.safeParse(raw);
-
-  console.log("SERVER ← received flow payload", {
-    answered: raw?.answered,
-    stateAnswers: raw?.state?.answers,
-    userText: raw?.userText,
-  });
 
   if (!parsed.success) {
     return NextResponse.json(
@@ -548,259 +576,239 @@ export async function POST(req: Request) {
     );
   }
 
-  const userText = (parsed.data.userText ?? "").trim();
+  const { stream, emit, close } = createStream();
 
-  // State coming from the client (persisted between rounds).
-  const priorAnswers = parsed.data.state?.answers ?? {};
-  const priorAsked = parsed.data.state?.asked ?? [];
-  const priorBasePaths = parsed.data.state?.basePaths ?? [];
-  const askedSet = new Set(priorAsked);
+  (async () => {
+    try {
+      const userText = (parsed.data.userText ?? "").trim();
+      const priorAnswers = parsed.data.state?.answers ?? {};
+      const priorAsked = parsed.data.state?.asked ?? [];
+      const priorBasePaths = parsed.data.state?.basePaths ?? [];
+      const askedSet = new Set(priorAsked);
 
-  // Merge newly submitted answers into state *before* we do retrieval / prompting.
-  for (const a of parsed.data.answered ?? []) priorAnswers[a.id] = a.value;
+      // Merge newly answered values into the running state.
+      for (const a of parsed.data.answered ?? []) priorAnswers[a.id] = a.value;
 
-  // Query terms for paragraph scoring = original query + any fixed attributes we already collected.
-  const queryTerms = Array.from(
-    new Set(
-      [userText, ...Object.values(priorAnswers).map(String)]
-        .join(" ")
-        .toLowerCase()
-        .split(/\s+/)
-        .map((w) => w.replace(/[^\p{L}\p{N}]+/gu, ""))
-        .filter((w) => w.length >= 3),
-    ),
-  );
+      // Query terms = user text + prior answers, tokenised for paragraph scoring.
+      const queryTerms = Array.from(
+        new Set(
+          [userText, ...Object.values(priorAnswers).map(String)]
+            .join(" ")
+            .toLowerCase()
+            .split(/\s+/)
+            .map((w) => w.replace(/[^\p{L}\p{N}]+/gu, ""))
+            .filter((w) => w.length >= 3),
+        ),
+      );
 
-  // Notice selection uses the “merged query” so earlier clarifiers influence retrieval.
-  const mergedQuery = [
-    userText,
-    ...Object.values(priorAnswers).map(String),
-  ].join(" ");
+      // Used for notice selection (includes prior answers to reduce ambiguity).
+      const mergedQuery = [
+        userText,
+        ...Object.values(priorAnswers).map(String),
+      ].join(" ");
 
-  // Notice selection is cached after round 1 (no reason to re-run it every time).
-  const basePaths =
-    priorBasePaths.length > 0
-      ? priorBasePaths
-      : await selectNotices(mergedQuery);
+      // Stage 1+2: select VAT notices (or re-use cached basePaths from state).
+      const basePaths =
+        priorBasePaths.length > 0
+          ? priorBasePaths
+          : await selectNotices(mergedQuery, emit);
 
-  // Evidence pool is rebuilt each round because the query terms can change as clarifiers come in.
-  const evidence = await buildEvidencePool(basePaths, queryTerms);
+      // Stage 3+4: fetch and rank evidence paragraphs into a single pool.
+      const evidence = await buildEvidencePool(basePaths, queryTerms, emit);
 
-  // Flattened evidence format for the frontend + citations UI.
-  const evidenceOut = evidence.map((e) => ({
-    url: e.webUrl,
-    basePath: e.basePath,
-    paragraphIndex: e.poolIndex,
-    docParagraphIndex: e.docParagraphIndex,
-    snippet: e.text,
-  }));
+      // Evidence output shape sent to frontend (includes stable paragraphIndex = poolIndex).
+      const evidenceOut = evidence.map((e) => ({
+        url: e.webUrl,
+        basePath: e.basePath,
+        paragraphIndex: e.poolIndex,
+        docParagraphIndex: e.docParagraphIndex,
+        snippet: e.text,
+      }));
 
-  const maxIdx = evidence.length;
+      const maxIdx = evidence.length;
 
-  // CALL 1: read + decide.
-  // Either we get a grounded answer, or we get a single blocked branch we need to clarify.
-  const read = await generateObject({
-    model: "openai/gpt-4o-mini",
-    schema: ReadSchema,
-    prompt: buildReadPrompt(userText, priorAnswers, evidence),
+      // Stage 5: “read” step — decide ANSWER vs NEED_CLARIFICATION.
+      emit({
+        type: "progress",
+        stage: "analysing",
+        detail: "Analysing evidence…",
+      });
+
+      const read = await generateObject({
+        model: "openai/gpt-4o-mini",
+        schema: ReadSchema,
+        prompt: buildReadPrompt(userText, priorAnswers, evidence),
+      });
+
+      // Guardrails: never allow out-of-range cites.
+      assertInRange(read.object.supportCites, maxIdx);
+      assertInRange(read.object.blockerCites ?? [], maxIdx);
+
+      // Only allow blockers that are local to the supports (prevents random far-away blockers).
+      const allowed = localWindow(read.object.supportCites, maxIdx, 2);
+      const validBlockers = filterLocal(read.object.blockerCites, allowed);
+
+      const canAsk =
+        read.object.status === "NEED_CLARIFICATION" &&
+        validBlockers.length > 0 &&
+        !!read.object.unresolvedBranch;
+
+      // Force-answer path (used when we can’t/shouldn’t ask more questions).
+      async function emitForceAnswer() {
+        emit({
+          type: "progress",
+          stage: "drafting",
+          detail: "Drafting conditional answer…",
+        });
+
+        const forced = await generateObject({
+          model: "openai/gpt-4o-mini",
+          schema: ForceAnswerSchema,
+          prompt: buildForceAnswerPrompt(userText, priorAnswers, evidence),
+        });
+
+        assertInRange(forced.object.citeParagraphs, maxIdx);
+        for (const b of forced.object.bullets) assertInRange(b.cites, maxIdx);
+
+        const citations = pickMinimalCitations(
+          evidenceOut,
+          forced.object.bullets.flatMap((b) => b.cites),
+          { maxTotal: 5, maxPerDoc: 2 },
+        );
+
+        const needsReview = computeNeedsReview(
+          basePaths,
+          citations.map((c) => c.snippet),
+        );
+
+        const response: FlowResponse = {
+          state: { answers: priorAnswers, asked: priorAsked, basePaths },
+          questions: [],
+          answer: {
+            conclusion: forced.object.conclusion,
+            reasoning: forced.object.bullets.map((b) => b.text),
+          },
+          evidencePool: evidenceOut as any,
+          citations: citations as any,
+          needsReview,
+        };
+
+        emit({ type: "done", payload: FlowResponseSchema.parse(response) });
+      }
+
+      // Direct answer path.
+      if (
+        read.object.status === "ANSWER" &&
+        read.object.conclusion &&
+        read.object.reasoningBullets
+      ) {
+        emit({
+          type: "progress",
+          stage: "drafting",
+          detail: "Drafting answer…",
+        });
+
+        for (const b of read.object.reasoningBullets)
+          assertInRange(b.cites, maxIdx);
+
+        const citations = pickMinimalCitations(
+          evidenceOut,
+          read.object.reasoningBullets.flatMap((b) => b.cites),
+          { maxTotal: 5, maxPerDoc: 2 },
+        );
+
+        const needsReview = computeNeedsReview(
+          basePaths,
+          citations.map((c) => c.snippet),
+        );
+
+        const response: FlowResponse = {
+          state: { answers: priorAnswers, asked: priorAsked, basePaths },
+          questions: [],
+          answer: {
+            conclusion: read.object.conclusion,
+            reasoning: read.object.reasoningBullets.map((b) => b.text),
+          },
+          evidencePool: evidenceOut as any,
+          citations: citations as any,
+          needsReview,
+        };
+
+        emit({ type: "done", payload: FlowResponseSchema.parse(response) });
+        return;
+      }
+
+      // Stall guard: cap how many clarifying questions we allow.
+      if (priorAsked.length >= 2) {
+        await emitForceAnswer();
+        return;
+      }
+
+      // If we can’t justify a local blocker, don’t ask — force answer instead.
+      if (!canAsk) {
+        await emitForceAnswer();
+        return;
+      }
+
+      // Stage 6: generate a single clarifying question.
+      emit({
+        type: "progress",
+        stage: "clarifying",
+        detail: "Generating clarifying question…",
+      });
+
+      const ask = await generateObject({
+        model: "openai/gpt-4o-mini",
+        schema: AskSchema,
+        prompt: buildAskPrompt(
+          userText,
+          priorAnswers,
+          priorAsked,
+          read.object.unresolvedBranch ?? "the blocking condition",
+          read.object.supportCites,
+          validBlockers,
+          evidence,
+        ),
+      });
+
+      const q = ask.object.question;
+
+      assertInRange(q.citeParagraphs, maxIdx);
+      assertInRange(
+        q.options.map((o) => o.citeParagraph),
+        maxIdx,
+      );
+
+      // If the model repeats an id we already asked, bail out to force answer.
+      if (askedSet.has(q.id)) {
+        await emitForceAnswer();
+        return;
+      }
+
+      const nextAsked = [...priorAsked, q.id];
+
+      const response: FlowResponse = {
+        state: { answers: priorAnswers, asked: nextAsked, basePaths },
+        questions: [q] as any,
+        answer: null,
+        evidencePool: evidenceOut as any,
+        citations: [],
+        needsReview: false,
+      };
+
+      emit({ type: "done", payload: FlowResponseSchema.parse(response) });
+    } catch (err: any) {
+      emit({ type: "error", message: err?.message ?? "Unknown error" });
+    } finally {
+      close();
+    }
+  })();
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+      "X-Content-Type-Options": "nosniff",
+    },
   });
-
-  assertInRange(read.object.supportCites, maxIdx);
-  assertInRange(read.object.blockerCites ?? [], maxIdx);
-
-  // Clarification is only allowed if blocker cites are local to the support cites.
-  // This stops the model from “inventing” a blocker from somewhere else in the pool.
-  const allowed = localWindow(read.object.supportCites, maxIdx, 2);
-  const validBlockers = filterLocal(read.object.blockerCites, allowed);
-
-  const canAsk =
-    read.object.status === "NEED_CLARIFICATION" &&
-    validBlockers.length > 0 &&
-    !!read.object.unresolvedBranch;
-
-  // If call 1 says ANSWER, we return an answer + minimal citations.
-  if (
-    read.object.status === "ANSWER" &&
-    read.object.conclusion &&
-    read.object.reasoningBullets
-  ) {
-    for (const b of read.object.reasoningBullets)
-      assertInRange(b.cites, maxIdx);
-
-    const citations = pickMinimalCitations(
-      evidenceOut,
-      read.object.reasoningBullets.flatMap((b) => b.cites),
-      { maxTotal: 5, maxPerDoc: 2 },
-    );
-
-    const needsReview = computeNeedsReview(
-      basePaths,
-      citations.map((c) => c.snippet),
-    );
-
-    const response: FlowResponse = {
-      state: { answers: priorAnswers, asked: priorAsked, basePaths },
-      questions: [],
-      answer: {
-        conclusion: read.object.conclusion,
-        reasoning: read.object.reasoningBullets.map((b) => b.text),
-      },
-      evidencePool: evidenceOut as any,
-      citations: citations as any,
-      needsReview,
-    };
-
-    return NextResponse.json(FlowResponseSchema.parse(response));
-  }
-
-  // If we already asked enough questions, force the best conditional answer we can.
-  const isStalled = priorAsked.length >= 2;
-
-  if (isStalled) {
-    const forced = await generateObject({
-      model: "openai/gpt-4o-mini",
-      schema: ForceAnswerSchema,
-      prompt: buildForceAnswerPrompt(userText, priorAnswers, evidence),
-    });
-
-    assertInRange(forced.object.citeParagraphs, maxIdx);
-    for (const b of forced.object.bullets) assertInRange(b.cites, maxIdx);
-
-    const citations = pickMinimalCitations(
-      evidenceOut,
-      forced.object.bullets.flatMap((b) => b.cites),
-      { maxTotal: 5, maxPerDoc: 2 },
-    );
-
-    const needsReview = computeNeedsReview(
-      basePaths,
-      citations.map((c) => c.snippet),
-    );
-
-    const response: FlowResponse = {
-      state: { answers: priorAnswers, asked: priorAsked, basePaths },
-      questions: [],
-      answer: {
-        conclusion: forced.object.conclusion,
-        reasoning: forced.object.bullets.map((b) => b.text),
-      },
-      evidencePool: evidenceOut as any,
-      citations: citations as any,
-      needsReview,
-    };
-
-    return NextResponse.json(FlowResponseSchema.parse(response));
-  }
-
-  // If call 1 wants to clarify but can’t justify it locally, we forbid clarification and force an answer.
-  if (!canAsk) {
-    const forced = await generateObject({
-      model: "openai/gpt-4o-mini",
-      schema: ForceAnswerSchema,
-      prompt: buildForceAnswerPrompt(userText, priorAnswers, evidence),
-    });
-
-    assertInRange(forced.object.citeParagraphs, maxIdx);
-    for (const b of forced.object.bullets) assertInRange(b.cites, maxIdx);
-
-    const citations = pickMinimalCitations(
-      evidenceOut,
-      forced.object.bullets.flatMap((b) => b.cites),
-      { maxTotal: 5, maxPerDoc: 2 },
-    );
-
-    const needsReview = computeNeedsReview(
-      basePaths,
-      citations.map((c) => c.snippet),
-    );
-
-    const response: FlowResponse = {
-      state: { answers: priorAnswers, asked: priorAsked, basePaths },
-      questions: [],
-      answer: {
-        conclusion: forced.object.conclusion,
-        reasoning: forced.object.bullets.map((b) => b.text),
-      },
-      evidencePool: evidenceOut as any,
-      citations: citations as any,
-      needsReview,
-    };
-
-    return NextResponse.json(FlowResponseSchema.parse(response));
-  }
-
-  // CALL 2: generate exactly one clarifying question grounded in the blocker region.
-  const ask = await generateObject({
-    model: "openai/gpt-4o-mini",
-    schema: AskSchema,
-    prompt: buildAskPrompt(
-      userText,
-      priorAnswers,
-      priorAsked,
-      read.object.unresolvedBranch ?? "the blocking condition",
-      read.object.supportCites,
-      validBlockers,
-      evidence,
-    ),
-  });
-
-  const q = ask.object.question;
-
-  // Validate citations: question and each option must cite real paragraphs in the pool.
-  assertInRange(q.citeParagraphs, maxIdx);
-  assertInRange(
-    q.options.map((o) => o.citeParagraph),
-    maxIdx,
-  );
-
-  // If the model reuses an id we already asked, force an answer instead (no loops).
-  if (askedSet.has(q.id)) {
-    const forced = await generateObject({
-      model: "openai/gpt-4o-mini",
-      schema: ForceAnswerSchema,
-      prompt: buildForceAnswerPrompt(userText, priorAnswers, evidence),
-    });
-
-    assertInRange(forced.object.citeParagraphs, maxIdx);
-    for (const b of forced.object.bullets) assertInRange(b.cites, maxIdx);
-
-    const citations = pickMinimalCitations(
-      evidenceOut,
-      forced.object.bullets.flatMap((b) => b.cites),
-      { maxTotal: 5, maxPerDoc: 2 },
-    );
-
-    const needsReview = computeNeedsReview(
-      basePaths,
-      citations.map((c) => c.snippet),
-    );
-
-    const response: FlowResponse = {
-      state: { answers: priorAnswers, asked: priorAsked, basePaths },
-      questions: [],
-      answer: {
-        conclusion: forced.object.conclusion,
-        reasoning: forced.object.bullets.map((b) => b.text),
-      },
-      evidencePool: evidenceOut as any,
-      citations: citations as any,
-      needsReview,
-    };
-
-    return NextResponse.json(FlowResponseSchema.parse(response));
-  }
-
-  const nextAsked = [...priorAsked, q.id];
-
-  // Question stage: no answer yet, so needsReview is false (only computed on answer payloads).
-  const response: FlowResponse = {
-    state: { answers: priorAnswers, asked: nextAsked, basePaths },
-    questions: [q] as any,
-    answer: null,
-    evidencePool: evidenceOut as any,
-    citations: [],
-    needsReview: false,
-  };
-
-  return NextResponse.json(FlowResponseSchema.parse(response));
 }

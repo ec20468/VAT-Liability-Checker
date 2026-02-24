@@ -5,9 +5,12 @@ import type { FlowResponse } from "@/lib/schemas/flow";
 
 import { PasswordGate } from "@/components/vat/PasswordGate";
 import { InitialScreen } from "@/components/vat/InitialScreen";
-import { ActiveScreen } from "@/components/vat/ActiveScreen";
 
-const SITE_PASSWORD = "vat2025"; // ← change this to your chosen password
+import { AnswerScreen } from "@/components/vat/AnswerScreen";
+import { ClarifierScreen } from "@/components/vat/ClarifierScreen";
+import { LoadingScreen } from "@/components/vat/LoadingScreen";
+
+const SITE_PASSWORD = "vat2025";
 
 type AnswersMap = Record<string, string>;
 
@@ -23,8 +26,14 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// Shape LoadingScreen POSTs to /api/flow
+type PendingRequest = {
+  userText: string;
+  answered?: { id: string; value: string }[];
+  state?: FlowResponse["state"];
+};
+
 export default function Page() {
-  // ── ALL hooks must come before any conditional return ──────────────────────
   const [unlocked, setUnlocked] = useState(false);
 
   const [draft, setDraft] = useState("");
@@ -36,6 +45,14 @@ export default function Page() {
 
   const [pendingAnswers, setPendingAnswers] = useState<AnswersMap>({});
   const [showEvidence, setShowEvidence] = useState(false);
+
+  // when set, LoadingScreen renders and owns the fetch
+  const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(
+    null,
+  );
+
+  // carries answeredMeta across the async boundary
+  const pendingAnsweredMetaRef = useRef<AnsweredPair[]>([]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -51,7 +68,6 @@ export default function Page() {
 
   useEffect(() => {
     if (!latest) return;
-
     const next: AnswersMap = {};
     for (const q of questions) {
       const existing = latest.state.answers[q.id];
@@ -65,7 +81,6 @@ export default function Page() {
     if (!scrollRef.current) return;
     scrollRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [rounds.length, loading, error]);
-  // ──────────────────────────────────────────────────────────────────────────
 
   if (!unlocked) {
     return (
@@ -83,63 +98,45 @@ export default function Page() {
     setError(null);
     setLoading(false);
     setShowEvidence(false);
+    setPendingRequest(null);
   }
 
-  async function callFlow(payload: unknown, answeredMeta: AnsweredPair[]) {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch("/api/flow", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setError(
-          json
-            ? JSON.stringify(json, null, 2)
-            : `Request failed (${res.status}) with non-JSON response`,
-        );
-        return;
-      }
-
-      const data = json as FlowResponse;
-
-      setRounds((cur) => [
-        ...cur,
-        {
-          id: uid(),
-          answered: answeredMeta,
-          data,
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
+  // Called by LoadingScreen when stream emits { type: "done" }
+  function handleStreamDone(data: FlowResponse) {
+    setRounds((cur) => [
+      ...cur,
+      { id: uid(), answered: pendingAnsweredMetaRef.current, data },
+    ]);
+    setLoading(false);
+    setPendingRequest(null);
+    pendingAnsweredMetaRef.current = [];
   }
 
+  function handleStreamError(msg: string) {
+    setError(msg);
+    setLoading(false);
+    setPendingRequest(null);
+  }
+
+  // Initial submit
   function submitInitial() {
     const q = draft.trim();
     if (!q) return;
-
     startFresh();
     setSubmittedQuery(q);
-    callFlow({ userText: q }, []);
+    pendingAnsweredMetaRef.current = [];
+    setPendingRequest({ userText: q });
+    setLoading(true);
   }
 
+  // Clarifier submit
   function submitClarifiers() {
     if (!latest || !submittedQuery) return;
 
     const answeredForThisRound: AnsweredPair[] = [];
-
     for (const q of questions) {
       const value = pendingAnswers[q.id];
       if (typeof value !== "string" || value.length === 0) continue;
-
       const opt = q.options.find((o) => o.value === value);
       answeredForThisRound.push({ id: q.id, value, label: opt?.label });
     }
@@ -149,13 +146,25 @@ export default function Page() {
       value,
     }));
 
-    callFlow(
-      {
-        userText: submittedQuery,
-        answered: answeredPayload,
-        state: latest.state,
-      },
-      answeredForThisRound,
+    pendingAnsweredMetaRef.current = answeredForThisRound;
+    setPendingRequest({
+      userText: submittedQuery,
+      answered: answeredPayload,
+      state: latest.state,
+    });
+    setLoading(true);
+  }
+
+  // Render
+
+  // LoadingScreen takes over while streaming
+  if (loading && pendingRequest) {
+    return (
+      <LoadingScreen
+        request={pendingRequest}
+        onDone={handleStreamDone}
+        onError={handleStreamError}
+      />
     );
   }
 
@@ -171,24 +180,27 @@ export default function Page() {
     );
   }
 
-  return (
-    <ActiveScreen
-      draft={draft}
-      setDraft={setDraft}
-      submittedQuery={submittedQuery}
-      rounds={rounds}
-      latest={latest}
-      loading={loading}
-      error={error}
-      showEvidence={showEvidence}
-      setShowEvidence={setShowEvidence}
-      pendingAnswers={pendingAnswers}
-      setPendingAnswers={setPendingAnswers}
-      answeredChipsByRound={answeredChipsByRound}
-      scrollRef={scrollRef}
-      onSubmitInitial={submitInitial}
-      onSubmitClarifiers={submitClarifiers}
-      onReset={startFresh}
-    />
-  );
+  if (latest?.answer) {
+    return (
+      <AnswerScreen
+        query={submittedQuery}
+        response={latest}
+        onReset={startFresh}
+      />
+    );
+  }
+
+  if (latest?.questions.length) {
+    return (
+      <ClarifierScreen
+        query={submittedQuery}
+        response={latest}
+        onSubmitAnswer={(questionId, value) => {
+          setPendingAnswers(() => ({ [questionId]: value }));
+          submitClarifiers();
+        }}
+        onReset={startFresh}
+      />
+    );
+  }
 }

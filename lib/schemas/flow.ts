@@ -62,3 +62,4 @@ export const FlowResponseSchema = z.object({
 });
 
 export type FlowResponse = z.infer<typeof FlowResponseSchema>;
+export type FlowRequest = z.infer<typeof FlowRequestSchema>;
