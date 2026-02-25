@@ -269,9 +269,9 @@ export function LoadingScreen({ request, onDone, onError }: Props) {
           fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}
       >
-        {/* ── Sphere ── */}
         <div
           style={{
+            //sphere
             position: "relative",
             width: 300,
             height: 300,
@@ -349,11 +349,10 @@ export function LoadingScreen({ request, onDone, onError }: Props) {
           </div>
         </div>
 
-        {/* ── Stage list ── */}
         <div style={{ marginTop: 52, width: "100%", maxWidth: 340 }}>
-          {/* Query */}
           <div
             style={{
+              //query
               marginBottom: 20,
               paddingBottom: 16,
               borderBottom: "1px solid rgba(255,255,255,0.05)",

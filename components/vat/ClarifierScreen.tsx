@@ -247,7 +247,6 @@ export function ClarifierScreen({
             </div>
           </div>
 
-          {/* ── Question ── */}
           <div style={{ marginBottom: 28 }}>
             <div
               style={{

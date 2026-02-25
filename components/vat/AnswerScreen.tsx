@@ -170,7 +170,6 @@ export function AnswerScreen({ query, response, onReset }: Props) {
         }}
       >
         <div style={{ width: "100%", maxWidth: 580 }}>
-          {/* ── Query strip with mini sphere ── */}
           <div
             style={{
               display: "flex",
@@ -358,7 +357,6 @@ export function AnswerScreen({ query, response, onReset }: Props) {
             </div>
           </div>
 
-          {/* ── Citations ── */}
           {response.citations.length > 0 && (
             <div style={{ marginBottom: 32 }}>
               <div
@@ -445,7 +443,6 @@ export function AnswerScreen({ query, response, onReset }: Props) {
             </div>
           )}
 
-          {/* ── Actions ── */}
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <button
               onClick={onReset}
