@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
+import { Header } from "@/components/ui/Header";
 
 export function InitialScreen({
   draft,
@@ -43,113 +44,10 @@ export function InitialScreen({
 
   return (
     <main className="min-h-dvh flex flex-col relative overflow-hidden">
-      <style jsx global>{`
-        :root {
-          --findvat-border: #252828;
-          --findvat-border-mid: #313535;
-          --findvat-accent: #1d70b8;
-          --findvat-accent-dim: #135896;
-          --findvat-accent-glow: rgba(29, 112, 184, 0.1);
-          --findvat-text-mid: #b1b4b6;
-          --findvat-text-dim: #6f777b;
-        }
-
-        .findvat-noise::before {
-          content: "";
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          z-index: 0;
-          opacity: 0.55;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
-        }
-        .findvat-noise ~ div input,
-        .findvat-noise ~ div textarea {
-          color: #dcdcdc !important;
-          caret-color: #1d70b8;
-        }
-      `}</style>
-
       <div className="findvat-noise absolute inset-0" />
 
       {/* HEADER: Added flex-1/justify-center to fix vertical alignment of text */}
-      <header
-        className="relative z-10 h-[58px] px-4 md:px-8 flex items-center justify-between border-b"
-        style={{ borderColor: "var(--findvat-border)" }}
-      >
-        <div className="flex items-center gap-[10px] h-full">
-          <span
-            className="uppercase font-semibold flex items-center h-full"
-            style={{
-              color: "var(--findvat-accent)",
-              letterSpacing: "0.12em",
-              fontSize: "clamp(18px, 2vw, 22px)",
-              lineHeight: 1,
-            }}
-          >
-            FindVAT
-          </span>
-          <span
-            aria-hidden="true"
-            className="hidden md:inline-block"
-            style={{
-              width: 1,
-              height: 14,
-              background: "var(--findvat-border-mid)",
-            }}
-          />
-          <span
-            className="uppercase hidden md:inline-flex items-center h-full"
-            style={{
-              color: "var(--findvat-text-dim)",
-              letterSpacing: "0.18em",
-              fontSize: 10,
-              fontWeight: 300,
-              lineHeight: 1,
-            }}
-          >
-            VAT Liability Advisor
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3 md:gap-5 h-full">
-          <span
-            className="inline-flex items-center gap-[7px] uppercase h-full"
-            style={{
-              color: "var(--findvat-text-dim)",
-              letterSpacing: "0.12em",
-              fontSize: 10,
-              lineHeight: 1,
-            }}
-          >
-            <span
-              aria-hidden="true"
-              className="inline-block rounded-full"
-              style={{
-                width: 6,
-                height: 6,
-                background: "#4caf82",
-                boxShadow: "0 0 6px rgba(76,175,130,0.5)",
-              }}
-            />
-            <span className="hidden sm:inline">System live</span>
-          </span>
-
-          <span
-            className="uppercase border px-[10px] py-[4px] flex items-center"
-            style={{
-              borderColor: "var(--findvat-border)",
-              color: "var(--findvat-text-dim)",
-              letterSpacing: "0.1em",
-              fontSize: 10,
-              lineHeight: 1,
-            }}
-          >
-            <span className="sm:hidden">UK · 25/26</span>
-            <span className="hidden sm:inline">UK VAT · 2025/26</span>
-          </span>
-        </div>
-      </header>
+      <Header />
 
       {/* Added pt-8 to ensure the top text doesn't touch the header border */}
       <div

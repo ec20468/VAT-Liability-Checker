@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as THREE from "three";
 import type { FlowResponse } from "@/lib/schemas/flow";
+import { Header } from "../ui/Header";
 
 const NOISE_GLSL = `
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
@@ -153,6 +154,7 @@ export function AnswerScreen({ query, response, onReset }: Props) {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
+      <Header />
 
       <div
         style={{

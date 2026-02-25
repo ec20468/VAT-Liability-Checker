@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { FlowResponse } from "@/lib/schemas/flow";
+import { Header } from "@/components/ui/Header";
 
 const NOISE_GLSL = `
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
@@ -258,6 +259,7 @@ export function LoadingScreen({ request, onDone, onError }: Props) {
         This sits inside your existing app shell — the Aceternity background
         shows through, header/footer stay mounted, no flash.
       */}
+      <Header />
       <div
         style={{
           display: "flex",
