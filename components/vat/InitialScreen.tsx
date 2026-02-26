@@ -1,8 +1,21 @@
 "use client";
 
-import { useMemo } from "react";
-import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
+import { useRef, useEffect, useState } from "react";
 import { Header } from "@/components/ui/Header";
+import { NeuBadge, NeuButton } from "@/components/ui/NeuSurface";
+
+const PLACEHOLDERS = [
+  'e.g. "importing a car from Argentina"',
+  'e.g. "hot takeaway food"',
+  'e.g. "commercial property rental"',
+  'e.g. "consultancy services for UK client"',
+];
+
+const CHIPS = [
+  "Is children's clothing zero-rated or exempt?",
+  "What rate applies to hot takeaway food?",
+  "Is residential construction standard or zero-rated?",
+];
 
 export function InitialScreen({
   draft,
@@ -17,244 +30,125 @@ export function InitialScreen({
   error: string | null;
   onSubmitInitial: () => void;
 }) {
-  const placeholders = useMemo(
-    () => [
-      'e.g. "importing a car from Argentina"',
-      'e.g. "hot takeaway food"',
-      'e.g. "commercial property rental"',
-      'e.g. "consultancy services for UK client"',
-    ],
-    [],
-  );
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [phIdx, setPhIdx] = useState(0);
 
-  const chips = useMemo(
-    () => [
-      "Is children's clothing zero-rated or exempt?",
-      "What rate applies to hot takeaway food?",
-      "Is residential construction standard or zero-rated?",
-    ],
-    [],
-  );
+  // Cycle placeholder when the field is empty
+  useEffect(() => {
+    if (draft) return;
+    const id = setInterval(
+      () => setPhIdx((i) => (i + 1) % PLACEHOLDERS.length),
+      3000,
+    );
+    return () => clearInterval(id);
+  }, [draft]);
 
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (loading) return;
-    onSubmitInitial();
+  const submit = () => {
+    if (!loading && draft.trim()) onSubmitInitial();
   };
 
   return (
-    <main className="min-h-dvh flex flex-col relative overflow-hidden">
-      <div className="findvat-noise absolute inset-0" />
-
-      {/* HEADER: Added flex-1/justify-center to fix vertical alignment of text */}
+    <div className="neu-page">
       <Header />
 
-      {/* Added pt-8 to ensure the top text doesn't touch the header border */}
-      <div
-        className="relative z-10 flex-1 flex flex-col items-center justify-center px-[4vw] pt-8"
-        style={{
-          paddingBottom: "clamp(12px, 3vh, 40px)",
-        }}
-      >
-        <div
-          className="w-full flex flex-col items-center"
-          style={{
-            gap: "clamp(16px, 2.5vw, 36px)",
-            maxWidth: "clamp(320px, 90vw, 680px)",
-          }}
-        >
-          <div
-            className="text-center"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "clamp(8px, 1vw, 16px)",
-            }}
-          >
-            <p
-              className="uppercase"
-              style={{
-                color: "var(--findvat-accent)",
-                letterSpacing: "0.22em",
-                fontSize: "clamp(9px, 0.7vw, 12px)",
-              }}
-            >
-              VAT Liability Classification
-            </p>
+      <main className="initial-screen">
+        <div className="initial-hero">
+          <p className="neu-eyebrow">VAT Liability Classification</p>
+          <h1 className="initial-h1">
+            Is your supply <span className="accent">taxable</span> —
+            <br />
+            and at what rate?
+          </h1>
+          <p className="initial-subtitle">
+            Describe a good or service. We&apos;ll ask clarifiers only when they
+            would change the VAT result.
+          </p>
+        </div>
 
-            <h1
-              className="text-white font-medium tracking-tight leading-[1.05]"
-              style={{ fontSize: "clamp(28px, 5.2vw, 84px)" }}
-            >
-              Is your supply{" "}
-              <span style={{ color: "var(--findvat-accent)" }}>taxable</span> -
-              <br />
-              and at what rate?
-            </h1>
+        <div className="initial-input-wrap">
+          <label htmlFor="supply-input" className="neu-label">
+            Describe the supply
+          </label>
 
-            <p
-              className="mx-auto leading-relaxed"
-              style={{
-                color: "var(--findvat-text-mid)",
-                fontSize: "clamp(13px, 1.15vw, 16px)",
-                maxWidth: "clamp(280px, 80vw, 560px)",
-              }}
-            >
-              Describe a good or service. We&apos;ll ask clarifiers only when
-              they would change the VAT result.
-            </p>
-          </div>
-
-          <div
-            className="flex flex-wrap justify-center"
-            style={{ gap: 8, maxWidth: 900, width: "100%" }}
-          >
-            {chips.map((c) => (
-              <button
-                key={c}
-                type="button"
-                disabled={loading}
-                onClick={() => setDraft(c)}
-                className="text-left border px-[14px] py-[8px] transition"
-                style={{
-                  borderColor: "var(--findvat-border-mid)",
-                  background: "rgba(21,22,22,0.70)",
-                  color: "var(--findvat-text-mid)",
-                  fontSize: 11,
-                  letterSpacing: "0.04em",
-                  lineHeight: 1.4,
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor =
-                    "var(--findvat-accent-dim)";
-                  e.currentTarget.style.background =
-                    "var(--findvat-accent-glow)";
-                  e.currentTarget.style.color = "var(--findvat-accent)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor =
-                    "var(--findvat-border-mid)";
-                  e.currentTarget.style.background = "rgba(21,22,22,0.70)";
-                  e.currentTarget.style.color = "var(--findvat-text-mid)";
-                }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-
-          <div className="w-full">
-            <div
-              className="uppercase mb-2"
-              style={{
-                color: "var(--findvat-text-dim)",
-                letterSpacing: "0.16em",
-                fontSize: "clamp(9px, 0.7vw, 11px)",
-              }}
-            >
-              Describe the supply
-            </div>
-
-            <PlaceholdersAndVanishInput
-              placeholders={placeholders}
+          <div className="neu-input-shell">
+            <input
+              ref={inputRef}
+              id="supply-input"
+              className="neu-input"
               value={draft}
-              onValueChange={setDraft}
-              onSubmit={handleSubmit}
-              disabled={loading}
-            />
-
-            <div
-              className="mt-3 flex items-center justify-between"
-              style={{
-                color: "var(--findvat-text-dim)",
-                fontSize: "clamp(9px, 0.75vw, 11px)",
-                letterSpacing: "0.06em",
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
               }}
+              placeholder={PLACEHOLDERS[phIdx]}
+              disabled={loading}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button
+              className="neu-icon-btn"
+              onClick={submit}
+              disabled={loading || !draft.trim()}
+              aria-label="Submit"
             >
-              <span className="hidden sm:inline">
-                Press Enter to send · Shift+Enter for new line
-              </span>
-              <span className="sm:hidden">Press Enter to send</span>
-              <span
-                className="border px-2 py-[2px] uppercase"
-                style={{
-                  borderColor: "var(--findvat-border)",
-                  fontSize: "clamp(8px, 0.65vw, 10px)",
-                  letterSpacing: "0.1em",
-                }}
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                Not legal advice
-              </span>
-            </div>
+                <line x1="3" y1="8" x2="13" y2="8" />
+                <polyline points="9 4 13 8 9 12" />
+              </svg>
+            </button>
           </div>
 
-          <div
-            className="w-full flex flex-col items-center justify-center"
-            style={{ minHeight: "2vw" }}
-          >
-            {loading && (
-              <div
-                className="flex items-center font-medium animate-pulse"
-                style={{
-                  gap: "0.6vw",
-                  color: "var(--findvat-text-dim)",
-                  fontSize: "clamp(11px, 0.8vw, 14px)",
-                }}
-              >
-                <div
-                  className="rounded-full"
-                  style={{
-                    width: "0.5vw",
-                    height: "0.5vw",
-                    minWidth: 8,
-                    minHeight: 8,
-                    background: "var(--findvat-accent)",
-                    boxShadow: "0 0 10px rgba(29,112,184,0.55)",
-                  }}
-                />
-                Analyzing...
-              </div>
-            )}
-
-            {error && (
-              <div
-                className="w-full rounded-xl border px-4 py-3"
-                style={{
-                  borderColor: "rgba(239,68,68,0.25)",
-                  background: "rgba(239,68,68,0.08)",
-                }}
-              >
-                <p
-                  className="leading-relaxed"
-                  style={{
-                    color: "rgba(252,165,165,0.95)",
-                    fontSize: "clamp(11px, 0.8vw, 14px)",
-                  }}
-                >
-                  {error}
-                </p>
-              </div>
-            )}
+          <div className="initial-meta">
+            <span className="neu-hint hint-desktop">
+              Press Enter to send · Shift+Enter for new line
+            </span>
+            <span className="neu-hint hint-mobile">Press Enter to send</span>
+            <NeuBadge>Not legal advice</NeuBadge>
           </div>
         </div>
-      </div>
+        <div className="initial-chips">
+          {CHIPS.map((c) => (
+            <NeuButton
+              key={c}
+              disabled={loading}
+              onClick={() => {
+                setDraft(c);
+                inputRef.current?.focus();
+              }}
+            >
+              {c}
+            </NeuButton>
+          ))}
+        </div>
 
-      <footer
-        className="relative z-10 py-[1.5vh] text-center border-t mt-auto"
-        style={{ borderColor: "var(--findvat-border)" }}
-      >
-        <p
-          className="font-semibold uppercase"
-          style={{
-            color: "rgba(243,242,241,0.22)",
-            letterSpacing: "0.25em",
-            fontSize: "clamp(8px, 0.4vw, 11px)",
-          }}
-        >
-          VAT Engine v5.2 · UK Statutory Guidance 2026
-        </p>
-      </footer>
-    </main>
+        <div className="initial-status" aria-live="polite">
+          {loading && (
+            <div className="initial-loading anim-pulse">
+              <div className="initial-dot" />
+              Analyzing...
+            </div>
+          )}
+          {error && !loading && (
+            <div className="initial-error" role="alert">
+              <p>{error}</p>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <footer className="footer"></footer>
+    </div>
   );
 }

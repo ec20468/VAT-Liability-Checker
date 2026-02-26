@@ -128,32 +128,6 @@ export default function Page() {
     setLoading(true);
   }
 
-  // Clarifier submit
-  function submitClarifiers() {
-    if (!latest || !submittedQuery) return;
-
-    const answeredForThisRound: AnsweredPair[] = [];
-    for (const q of questions) {
-      const value = pendingAnswers[q.id];
-      if (typeof value !== "string" || value.length === 0) continue;
-      const opt = q.options.find((o) => o.value === value);
-      answeredForThisRound.push({ id: q.id, value, label: opt?.label });
-    }
-
-    const answeredPayload = answeredForThisRound.map(({ id, value }) => ({
-      id,
-      value,
-    }));
-
-    pendingAnsweredMetaRef.current = answeredForThisRound;
-    setPendingRequest({
-      userText: submittedQuery,
-      answered: answeredPayload,
-      state: latest.state,
-    });
-    setLoading(true);
-  }
-
   // Render
 
   // LoadingScreen takes over while streaming
@@ -195,8 +169,19 @@ export default function Page() {
         query={submittedQuery}
         response={latest}
         onSubmitAnswer={(questionId, value) => {
-          setPendingAnswers(() => ({ [questionId]: value }));
-          submitClarifiers();
+          if (!latest || !submittedQuery) return;
+          const q = questions.find((q) => q.id === questionId);
+          const opt = q?.options.find((o) => o.value === value);
+          const answeredForThisRound: AnsweredPair[] = [
+            { id: questionId, value, label: opt?.label },
+          ];
+          pendingAnsweredMetaRef.current = answeredForThisRound;
+          setPendingRequest({
+            userText: submittedQuery,
+            answered: [{ id: questionId, value }],
+            state: latest.state,
+          });
+          setLoading(true);
         }}
         onReset={startFresh}
       />
