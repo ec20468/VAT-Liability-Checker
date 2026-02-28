@@ -197,6 +197,29 @@ function scoreParagraph(text: string, terms: string[]) {
   return score;
 }
 
+function mergeColonParagraphs(paragraphs: { index: number; text: string }[]) {
+  const merged: { index: number; text: string }[] = [];
+  let i = 0;
+  while (i < paragraphs.length) {
+    const current = paragraphs[i];
+    const trimmed = current.text.trimEnd();
+    if (
+      (trimmed.endsWith(":") || trimmed.endsWith("—")) &&
+      i + 1 < paragraphs.length
+    ) {
+      merged.push({
+        index: current.index,
+        text: current.text + " " + paragraphs[i + 1].text,
+      });
+      i += 2;
+    } else {
+      merged.push(current);
+      i += 1;
+    }
+  }
+  return merged;
+}
+
 async function buildEvidencePool(
   basePaths: string[],
   queryTerms: string[],
@@ -226,7 +249,7 @@ async function buildEvidencePool(
   const seen = new Set<string>();
 
   for (const doc of docs) {
-    const top = doc.paragraphs
+    const top = mergeColonParagraphs(doc.paragraphs)
       .slice(0, 800)
       .map((p) => ({ p, s: scoreParagraph(p.text, queryTerms) }))
       .filter((x) => x.s > 0)
