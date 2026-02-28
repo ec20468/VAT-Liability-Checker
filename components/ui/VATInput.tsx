@@ -18,6 +18,7 @@ export default function VATInput({
   inputRef,
 }: VATInputProps) {
   const [focused, setFocused] = React.useState(false);
+  const [btnHovered, setBtnHovered] = React.useState(false);
 
   const canSubmit = !disabled && !!value.trim();
 
@@ -74,7 +75,7 @@ export default function VATInput({
         aria-label="Submit"
         style={{
           background: canSubmit ? "#1d70b8" : "#93c5fd",
-          border: "none",
+          border: "2px solid #0f172a",
           borderRadius: 7,
           cursor: canSubmit ? "pointer" : "not-allowed",
           width: 40,
@@ -82,17 +83,12 @@ export default function VATInput({
           display: "grid",
           placeItems: "center",
           flexShrink: 0,
-          transition: "background 0.15s",
+          boxShadow: btnHovered && canSubmit ? "none" : "2px 2px 0 #0f172a",
+          transform: btnHovered && canSubmit ? "translate(2px, 2px)" : "none",
+          transition: "box-shadow 0.15s, transform 0.15s, background 0.15s",
         }}
-        onMouseEnter={(e) => {
-          if (canSubmit)
-            (e.currentTarget as HTMLButtonElement).style.background = "#1d70b8";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = canSubmit
-            ? "#1d70b8"
-            : "#93c5fd";
-        }}
+        onMouseEnter={() => setBtnHovered(true)}
+        onMouseLeave={() => setBtnHovered(false)}
       >
         <svg
           width="16"
