@@ -51,6 +51,7 @@ export const FlowResponseSchema = z.object({
     .object({
       conclusion: z.string(),
       reasoning: z.array(z.string()),
+      vatRate: z.enum(["zero", "reduced", "standard", "exempt"]).nullable(),
     })
     .nullable(),
   evidencePool: z.array(CitationSchema),

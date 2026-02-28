@@ -7,27 +7,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MiniSphere } from "../ui/MiniSphere";
 
+const RATE_LABELS: Record<"zero" | "reduced" | "standard" | "exempt", string> =
+  {
+    zero: "Zero-rated · 0%",
+    reduced: "Reduced rate · 5%",
+    standard: "Standard-rated · 20%",
+    exempt: "Exempt",
+  };
+
 function extractRate(
-  conclusion: string,
+  vatRate: "zero" | "reduced" | "standard" | "exempt" | null | undefined,
 ): { label: string; kind: "zero" | "reduced" | "standard" | "exempt" } | null {
-  const c = conclusion.toLowerCase();
-
-  if (c.includes("zero-rated") || c.includes("zero rated"))
-    return { label: "Zero-rated · 0%", kind: "zero" };
-
-  if (
-    c.includes("standard-rated") ||
-    c.includes("standard rated") ||
-    c.includes("20%")
-  )
-    return { label: "Standard-rated · 20%", kind: "standard" };
-
-  if (c.includes("reduced") || c.includes("5%"))
-    return { label: "Reduced rate · 5%", kind: "reduced" };
-
-  if (c.includes("exempt")) return { label: "Exempt", kind: "exempt" };
-
-  return null;
+  if (!vatRate) return null;
+  return { label: RATE_LABELS[vatRate], kind: vatRate };
 }
 
 type Props = {
@@ -46,7 +38,7 @@ export function AnswerScreen({ query, response, onReset }: Props) {
   }, []);
 
   const answer = response.answer!;
-  const rate = extractRate(answer.conclusion);
+  const rate = extractRate(answer.vatRate);
 
   return (
     <div className="neu-page">

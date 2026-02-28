@@ -416,6 +416,7 @@ const ReadSchema = z.object({
   supportCites: z.array(z.number().int().nonnegative()).min(1).max(3),
   blockerCites: z.array(z.number().int().nonnegative()).max(6),
   conclusion: z.string().nullable(),
+  vatRate: z.enum(["zero", "reduced", "standard", "exempt"]).nullable(),
   reasoningBullets: z
     .array(
       z.object({
@@ -431,6 +432,7 @@ const AskSchema = z.object({ question: QuestionSchema });
 
 const ForceAnswerSchema = z.object({
   conclusion: z.string().min(1),
+  vatRate: z.enum(["zero", "reduced", "standard", "exempt"]).nullable(),
   bullets: z
     .array(
       z.object({
@@ -505,6 +507,7 @@ function buildReadPrompt(
       )
       .join("\n\n"),
     "",
+    "- vatRate: one of: 'zero', 'reduced', 'standard', 'exempt' — set this when status=ANSWER, otherwise null.",
     "Return JSON only.",
   ].join("\n");
 }
@@ -586,6 +589,7 @@ function buildForceAnswerPrompt(
       )
       .join("\n\n"),
     "",
+    "- vatRate: one of: 'zero', 'reduced', 'standard', 'exempt' — your best determination given what you know, or null if genuinely conditional.",
     "Return JSON only.",
   ].join("\n");
 }
@@ -715,6 +719,7 @@ export async function POST(req: Request) {
           answer: {
             conclusion: forced.object.conclusion,
             reasoning: forced.object.bullets.map((b) => b.text),
+            vatRate: read.object.vatRate ?? null,
           },
           evidencePool: evidenceOut as any,
           citations: citations as any,
@@ -756,6 +761,7 @@ export async function POST(req: Request) {
           answer: {
             conclusion: read.object.conclusion,
             reasoning: read.object.reasoningBullets.map((b) => b.text),
+            vatRate: read.object.vatRate ?? null,
           },
           evidencePool: evidenceOut as any,
           citations: citations as any,
