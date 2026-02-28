@@ -42,7 +42,6 @@ export function ClarifierScreen({
       data-submitting={submitting ? "true" : "false"}
     >
       <div className="cs-inner section">
-        {/* Top strip — orb + query + status */}
         <div className="top-strip">
           <div className="orb">
             <div className="cs-orb-glow" />
@@ -58,14 +57,12 @@ export function ClarifierScreen({
           </div>
         </div>
 
-        {/* Question */}
         <div className="section">
           <NeuBadge>Clarification needed</NeuBadge>
           <p className="cs-question-text">{q.questionText}</p>
           <p className="cs-reason">{q.reasoning}</p>
         </div>
 
-        {/* Options */}
         <div className="section">
           {q.options.map((opt) => {
             const isSelected = selected === opt.value;

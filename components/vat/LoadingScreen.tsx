@@ -163,81 +163,36 @@ export function LoadingScreen({ request, onDone, onError }: Props) {
           </div>
 
           {/* Pipeline */}
+          {/* Pipeline */}
           <div className="section-hdr">
             <NeuBadge>Pipeline</NeuBadge>
             <span className="ls-elapsed">{fmt(elapsed)}</span>
           </div>
 
           <div className="section">
-            {STAGE_ORDER.map((stageId, i) => {
-              const live = stages.find((s) => s.stage === stageId);
-              const isDone = live?.completedAt != null;
-              const isActive = stageId === active;
-              const isPending = !live;
-              const prevLive = stages.find(
-                (s) => s.stage === STAGE_ORDER[i - 1],
-              );
-              const dur =
-                isDone && prevLive?.completedAt
-                  ? live!.completedAt! - prevLive.completedAt
-                  : null;
-
-              return (
-                <div
-                  key={stageId}
-                  className={[
-                    "tl-row",
-                    isPending ? "tl-row--pending" : "",
-                    live ? "tl-row--animated" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <div
-                    className={[
-                      "tl-line",
-                      isDone ? "tl-line--done" : "",
-                      isActive ? "tl-line--active" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  />
-
-                  <div className="ls-stage-tile">
-                    <div
-                      className={[
-                        "tl-dot",
-                        isDone ? "tl-dot--done" : "",
-                        isActive ? "tl-dot--active" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    />
-
-                    <div className="ls-stage-text">
-                      <div
-                        className={[
-                          "ls-stage-name",
-                          isPending ? "ls-stage-name--pending" : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                      >
-                        {STAGE_META[stageId] ?? stageId}
-                      </div>
-                      {live?.detail && (
-                        <div className="ls-stage-detail">{live.detail}</div>
-                      )}
-                    </div>
-
-                    {isActive && <span className="spinner" />}
-                    {isDone && dur && (
-                      <span className="ls-stage-duration">{fmt(dur)}</span>
-                    )}
-                  </div>
+            {done ? (
+              <div className="tl-row">
+                <div className="ls-stage-tile">
+                  <div className="tl-dot tl-dot--done" />
+                  <div className="ls-stage-name">Complete</div>
                 </div>
-              );
-            })}
+              </div>
+            ) : active ? (
+              <div className="tl-row tl-row--animated">
+                <div className="ls-stage-tile">
+                  <div className="tl-dot tl-dot--active" />
+                  <div className="ls-stage-text">
+                    <div className="ls-stage-name">
+                      {STAGE_META[active] ?? active}
+                    </div>
+                    <div className="ls-stage-detail">
+                      {completedCount} of {STAGE_ORDER.length} steps
+                    </div>
+                  </div>
+                  <span className="spinner" />
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

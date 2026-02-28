@@ -1,29 +1,9 @@
-/* ============================================================
-   FINDVAT — Design System
-   Structure:
-     1. Tokens          — single source of truth for every value
-     2. Reset + Base
-     3. Neumorphic Primitives
-     4. Typography Utilities
-     5. Animations      — one place, no duplicates across screens
-     6. Shared Layout Primitives  ← the big win
-     7. Page Chrome (Header / Footer)
-     8. InitialScreen
-     9. LoadingScreen
-    10. AnswerScreen
-    11. ClarifierScreen
-   ============================================================ */
-
-/* ── 1. TOKENS ─────────────────────────────────────────────── */
-
 :root {
-  /* ── Layout ─── */
   --container: min(1080px, calc(100vw - clamp(24px, 5vw, 80px)));
   --header-h: 58px; /* used in screen min-height calc */
 
-  /* ── Spacing scale ───────────────────────────────────────
-     Every margin, padding and gap must come from here.
-     Nothing is hard-coded elsewhere.                       */
+  /* spacing scale
+     Every margin, padding and gap must come from here*/
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -33,15 +13,12 @@
   --sp-7: clamp(24px, 3.5vh, 36px);
   --sp-8: clamp(32px, 5vh, 56px);
 
-  /* ── Border-radius scale ─────────────────────────────────
-     Used for every rounded corner in the app.             */
+  /* border-radius scale: Used for every rounded corner in the app.*/
   --r-sm: 8px;
   --r: 14px; /* default — inputs, chips, cards, buttons */
   --r-lg: 20px; /* large cards */
   --r-pill: 999px; /* orbs, dots, fully round shapes */
 
-  /* ── Neumorphism ─────────────────────────────────────────
-     Every surface must use --neu-bg as its background.    */
   --neu-bg: #e8eaec;
   --neu-drop:
     12px 12px 30px rgba(13, 39, 80, 0.14),
@@ -61,16 +38,15 @@
   --neu-footer-shadow:
     0 -4px 12px rgba(13, 39, 80, 0.06), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
 
-  /* ── Colour ──────────────────────────────────────────────  */
   --c-strong: #1a2a3a;
   --c-mid: #5a6d85;
-  --c-dim: #9baec4;
+  --c-dim: #5a6d85;
   --c-accent: #1d70b8;
   --c-accent-ring: rgba(29, 112, 184, 0.25);
   --c-accent-glow: rgba(18, 23, 27, 0.5);
   --c-divider: rgba(13, 39, 80, 0.08);
 
-  /* GOV.UK semantic colours */
+  /* GOV.UK colours */
   --gov-blue: #1d70b8;
   --gov-green: #00703c;
   --gov-red: #d4351c;
@@ -79,7 +55,6 @@
   --gov-yellow: #ffdd00;
   --gov-teal: #28a197;
 
-  /* ── Type scale — fluid from 320 px → 1920 px ─────────── */
   --t-2xs: clamp(9px, 0.5vw + 6px, 11px);
   --t-xs: clamp(10px, 0.55vw + 7px, 13px);
   --t-sm: clamp(12px, 0.65vw + 8px, 15px);
@@ -88,8 +63,6 @@
   --t-xl: clamp(20px, 1.4vw + 10px, 34px);
   --t-display: clamp(30px, 3.5vw + 14px, 76px);
 }
-
-/* ── 2. RESET + BASE ────────────────────────────────────────── */
 
 *,
 *::before,
@@ -120,8 +93,8 @@ body {
   border-radius: var(--r-pill);
 }
 
-/* ── 3. NEUMORPHIC PRIMITIVES ───────────────────────────────── */
-/*  All use --r, --sp-*, --neu-* tokens — never hard-coded.     */
+/*NEUMORPHIC*/
+/*  All use --r, --sp-*, --neu-* tokens*/
 
 /* Static raised label */
 .neu-badge {
@@ -198,7 +171,7 @@ body {
   color: var(--c-accent);
 }
 
-/* Sunken input shell */
+/* Sunk input shell */
 .neu-input-shell {
   display: flex;
   align-items: center;
@@ -264,7 +237,7 @@ body {
   cursor: not-allowed;
 }
 
-/* ── 4. TYPOGRAPHY UTILITIES ────────────────────────────────── */
+/* TYPOGRAPHY*/
 
 .neu-eyebrow {
   font-size: var(--t-xs);
@@ -288,10 +261,9 @@ body {
   color: var(--c-dim);
 }
 
-/* ── 5. ANIMATIONS ──────────────────────────────────────────── */
-/*  Defined once. Applied anywhere via class or keyframe name.  */
+/* ANIMATIONS */
 
-/* pulse — loading dots, active stage dot */
+/* pulse : oading dots, active stage dot */
 @keyframes pulse {
   0%,
   100% {
@@ -309,7 +281,7 @@ body {
   }
 }
 
-/* slide-in — stage rows, reason rows */
+/* slide-in: stage rows, reason rows */
 @keyframes slide-in {
   from {
     opacity: 0;
@@ -328,27 +300,9 @@ body {
   animation: slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* ── 6. SHARED LAYOUT PRIMITIVES ────────────────────────────── */
-/*
-   These replace duplicated per-screen rules:
+/* SHARED LAYOUT*/
 
-   .screen        ←  ls-wrap / as-wrap / cs-wrap
-   .screen-body   ←  ls-body / as-inner / cs-inner
-   .top-strip     ←  as-topStrip / cs-topStrip
-   .orb           ←  as-orb / cs-orb
-   .query-block   ←  as-queryBlock / cs-queryBlock
-   .query-text    ←  as-queryText / cs-queryText
-   .section       ←  as-section / cs-question / ls-pipeline
-   .section-hdr   ←  ls-pipeline-header (label + elapsed)
-   .actions-row   ←  as-actions / cs-actions
-   .tl-row        ←  ls-stage-row / as-reasonRow
-   .tl-line       ←  ls-stage-line / as-reasonLine
-   .tl-dot        ←  ls-stage-dot
-   .spinner       ←  ls-stage-spinner / cs-spinner
-   .status-pill   ←  cs-status (dot + label)
-*/
-
-/* ┌ Screen wrapper ──────────────────────────────────────────┐ */
+/* Screen wrap*/
 .screen {
   min-height: calc(100dvh - var(--header-h));
   display: flex;
@@ -377,7 +331,7 @@ body {
   transform: translateY(0);
 }
 
-/* ┌ Screen body ─────────────────────────────────────────────┐ */
+/* Screen body*/
 .screen-body {
   width: var(--container);
   margin: 0 auto;
@@ -394,7 +348,7 @@ body {
   width: min(600px, var(--container));
 }
 
-/* ┌ Top strip ───────────────────────────────────────────────┐ */
+/* Top strip */
 /*  orb + query context + optional status — used on Answer + Clarifier */
 .top-strip {
   display: flex;
@@ -405,7 +359,7 @@ body {
   margin-bottom: var(--sp-5);
 }
 
-/* ┌ Orb ─────────────────────────────────────────────────────┐ */
+/* Orb/sphere */
 .orb {
   flex-shrink: 0;
   width: 44px;
@@ -415,7 +369,7 @@ body {
   position: relative;
 }
 
-/* ┌ Query block ─────────────────────────────────────────────┐ */
+/* Query block */
 .query-block {
   flex: 1;
   min-width: 0;
@@ -432,7 +386,7 @@ body {
   text-overflow: ellipsis;
 }
 
-/* ┌ Section ─────────────────────────────────────────────────┐ */
+/* Section */
 .section {
   display: flex;
   flex-direction: column;
@@ -440,7 +394,7 @@ body {
   width: 100%;
 }
 
-/* ┌ Section header ──────────────────────────────────────────┐ */
+/* Section header */
 .section-hdr {
   display: flex;
   align-items: center;
@@ -448,7 +402,7 @@ body {
   gap: var(--sp-2);
 }
 
-/* ┌ Actions row ─────────────────────────────────────────────┐ */
+/* Actions row */
 .actions-row {
   display: flex;
   align-items: center;
@@ -456,7 +410,7 @@ body {
   flex-wrap: wrap;
 }
 
-/* ┌ Timeline row ─────────────────────────────────────────────┐ */
+/* Timeline row */
 /*  Used by: pipeline stages (Loading) + reasoning rows (Answer) */
 .tl-row {
   display: flex;
@@ -508,8 +462,7 @@ body {
   animation: pulse 1.4s ease-in-out infinite;
 }
 
-/* ┌ Spinner ─────────────────────────────────────────────────┐ */
-/*  Replaces ls-stage-spinner AND cs-spinner — identical.     */
+/* Spinner */
 .spinner {
   flex-shrink: 0;
   width: 10px;
@@ -520,7 +473,7 @@ body {
   animation: spin 0.7s linear infinite;
 }
 
-/* ┌ Status pill ─────────────────────────────────────────────┐ */
+/* Status pill  */
 .status-pill {
   display: flex;
   align-items: center;
@@ -541,7 +494,7 @@ body {
   color: var(--c-dim);
 }
 
-/* ── 7. PAGE CHROME ─────────────────────────────────────────── */
+/* PAGE CHROME */
 
 .neu-page {
   min-height: 100dvh;
@@ -624,8 +577,8 @@ body {
   color: var(--c-dim);
 }
 
-/* ── 8. INITIAL SCREEN ──────────────────────────────────────── */
-/*  Uses .screen base class + these overrides.                  */
+/* INITIAL SCREEN */
+/*  Uses .screen base class + these overrides.*/
 
 .initial-screen {
   flex: 1; /* fills space between header and footer */
@@ -737,7 +690,7 @@ body {
   line-height: 1.5;
 }
 
-/* ── 9. LOADING SCREEN ──────────────────────────────────────── */
+/* LOADING SCREEN */
 /*  Uses .screen + .screen-body--card + shared .tl-row etc.    */
 
 .ls-sphere-wrap {
@@ -873,7 +826,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── 10. ANSWER SCREEN ──────────────────────────────────────── */
+/* ANSWER SCREEN */
 /*  Uses .screen.screen--top.screen--fade + .screen-body
     + .top-strip + .orb + .query-block + .section + .tl-row    */
 
@@ -914,7 +867,7 @@ body {
 .as-reason-text {
   flex: 1;
   font-size: var(--t-sm);
-  color: var(--c-mid);
+  color: var(--c-strong);
   line-height: 1.7;
 }
 
@@ -970,11 +923,9 @@ body {
   color: var(--c-mid);
 }
 
-/* ── 11. CLARIFIER SCREEN ───────────────────────────────────── */
-/*  Uses .screen.screen--fade + .screen-body + .top-strip +
-    .orb + .query-block + .section + .actions-row             */
+/* CALRIFIER SCREEN */
 
-/* Narrower max-width — question-card feel */
+/* Narrower max-width  */
 .cs-inner {
   width: min(720px, var(--container));
 }
