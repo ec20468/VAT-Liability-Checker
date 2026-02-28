@@ -1,15 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import type { FlowResponse } from "@/lib/schemas/flow";
 
-import { PasswordGate } from "@/components/vat/PasswordGate";
 import { InitialScreen } from "@/components/vat/InitialScreen";
 import { AnswerScreen } from "@/components/vat/AnswerScreen";
 import { ClarifierScreen } from "@/components/vat/ClarifierScreen";
 import { LoadingScreen } from "@/components/vat/LoadingScreen";
-
-const SITE_PASSWORD = "vat2025";
 
 type AnswersMap = Record<string, string>;
 
@@ -33,8 +31,6 @@ type PendingRequest = {
 };
 
 export default function Page() {
-  const [unlocked, setUnlocked] = useState(false);
-
   const [draft, setDraft] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
 
@@ -80,15 +76,6 @@ export default function Page() {
     if (!scrollRef.current) return;
     scrollRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [rounds.length, loading, error]);
-
-  if (!unlocked) {
-    return (
-      <PasswordGate
-        sitePassword={SITE_PASSWORD}
-        onUnlock={() => setUnlocked(true)}
-      />
-    );
-  }
 
   function startFresh() {
     setSubmittedQuery(null);
