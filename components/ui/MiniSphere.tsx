@@ -64,7 +64,7 @@ export function MiniSphere({ color }: { color: string }) {
       ctx.fill(p);
 
       particleTex = new THREE.CanvasTexture(dc);
-      geo = new THREE.IcosahedronGeometry(1, 40);
+      geo = new THREE.IcosahedronGeometry(1, 8);
       mat = new THREE.PointsMaterial({
         map: particleTex,
         blending: THREE.NormalBlending,
@@ -77,8 +77,8 @@ export function MiniSphere({ color }: { color: string }) {
       mat.onBeforeCompile = (shader) => {
         shader.uniforms.time = { value: 0 };
         shader.uniforms.radius = { value: 1.5 };
-        shader.uniforms.particleSizeMin = { value: 0.009 };
-        shader.uniforms.particleSizeMax = { value: 0.065 };
+        shader.uniforms.particleSizeMin = { value: 0.006 };
+        shader.uniforms.particleSizeMax = { value: 0.018 };
 
         shader.vertexShader = [
           "uniform float time,radius,particleSizeMin,particleSizeMax;",
