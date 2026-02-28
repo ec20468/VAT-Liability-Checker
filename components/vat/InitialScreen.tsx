@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import { Header } from "@/components/ui/Header";
 import { NeuBadge, NeuButton } from "@/components/ui/NeuSurface";
+import VATInput from "../ui/VATInput";
 
 const PLACEHOLDERS = [
   'e.g. "importing a car from Argentina"',
@@ -55,61 +56,27 @@ export function InitialScreen({
         <div className="initial-hero">
           <p className="neu-eyebrow">VAT Liability Classification</p>
           <h1 className="initial-h1">
-            Is your supply <span className="accent">taxable</span> —
+            What rate is your <span className="accent">taxable</span>
             <br />
-            and at what rate?
+            supply?
           </h1>
-          <p className="initial-subtitle">
-            Describe a good or service. We&apos;ll ask clarifiers only when they
-            would change the VAT result.
-          </p>
         </div>
+        <br />
+        <br />
 
         <div className="initial-input-wrap">
           <label htmlFor="supply-input" className="neu-label">
             Describe the supply
           </label>
 
-          <div className="neu-input-shell">
-            <input
-              ref={inputRef}
-              id="supply-input"
-              className="neu-input"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-              placeholder={PLACEHOLDERS[phIdx]}
-              disabled={loading}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <button
-              className="neu-icon-btn"
-              onClick={submit}
-              disabled={loading || !draft.trim()}
-              aria-label="Submit"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="3" y1="8" x2="13" y2="8" />
-                <polyline points="9 4 13 8 9 12" />
-              </svg>
-            </button>
-          </div>
-
+          <VATInput
+            value={draft}
+            onChange={setDraft}
+            onSubmit={onSubmitInitial}
+            placeholder={PLACEHOLDERS[phIdx]}
+            disabled={loading}
+            inputRef={inputRef}
+          />
           <div className="initial-meta">
             <span className="neu-hint hint-desktop">
               Press Enter to send · Shift+Enter for new line
