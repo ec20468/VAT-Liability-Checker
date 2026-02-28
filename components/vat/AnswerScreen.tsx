@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import type { FlowResponse } from "@/lib/schemas/flow";
 import { Header } from "../ui/Header";
-import { NeuButton, NeuBadge } from "../ui/NeuSurface";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { MiniSphere } from "../ui/MiniSphere";
 
 function extractRate(
@@ -66,21 +67,22 @@ export function AnswerScreen({ query, response, onReset }: Props) {
                 <div className="neu-label">Query</div>
                 <p className="query-text">&ldquo;{query}&rdquo;</p>
               </div>
-              <NeuBadge>Complete</NeuBadge>
+              <Badge variant="neutral">Complete</Badge>
             </div>
 
             {/* Conclusion */}
             <section className="section">
               <div className="as-badges">
                 {rate && (
-                  <NeuBadge className={`rate-badge--${rate.kind}`}>
+                  <Badge
+                    variant="neutral"
+                    className={`rate-badge--${rate.kind}`}
+                  >
                     {rate.label}
-                  </NeuBadge>
+                  </Badge>
                 )}
                 {response.needsReview && (
-                  <NeuBadge className="warn-badge">
-                    ⚠ Verify with advisor
-                  </NeuBadge>
+                  <Badge className="warn-badge">⚠ Verify with advisor</Badge>
                 )}
               </div>
               <p className="as-conclusion-text">{answer.conclusion}</p>
@@ -112,9 +114,9 @@ export function AnswerScreen({ query, response, onReset }: Props) {
                       ?.replace(/-/g, " ");
 
                     return (
-                      <NeuButton
+                      <Button
                         key={i}
-                        variant="subtle"
+                        variant="neutral"
                         data-active={isOpen ? "true" : "false"}
                         onClick={() => setExpandedCite(isOpen ? null : i)}
                         className="as-cite-btn"
@@ -133,7 +135,7 @@ export function AnswerScreen({ query, response, onReset }: Props) {
                         <span className="as-cite-chevron" aria-hidden="true">
                           {isOpen ? "▲" : "▼"}
                         </span>
-                      </NeuButton>
+                      </Button>
                     );
                   })}
                 </div>
@@ -142,9 +144,9 @@ export function AnswerScreen({ query, response, onReset }: Props) {
 
             {/* Actions */}
             <div className="actions-row">
-              <NeuButton variant="subtle" onClick={onReset}>
+              <Button variant="neutral" onClick={onReset}>
                 ← New query
-              </NeuButton>
+              </Button>
               <a
                 className="as-link"
                 href="https://www.gov.uk/government/collections/vat-notices-numerical-order"

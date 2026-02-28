@@ -2,7 +2,8 @@
 
 import { useRef, useEffect, useState } from "react";
 import { Header } from "@/components/ui/Header";
-import { NeuBadge, NeuButton } from "@/components/ui/NeuSurface";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import VATInput from "../ui/VATInput";
 
 const PLACEHOLDERS = [
@@ -82,21 +83,21 @@ export function InitialScreen({
               Press Enter to send · Shift+Enter for new line
             </span>
             <span className="neu-hint hint-mobile">Press Enter to send</span>
-            <NeuBadge>Not legal advice</NeuBadge>
+            <Badge variant="neutral">Not legal advice</Badge>
           </div>
         </div>
         <div className="initial-chips">
           {CHIPS.map((c) => (
-            <NeuButton
+            <Button
               key={c}
-              disabled={loading}
+              variant="neutral"
               onClick={() => {
                 setDraft(c);
                 inputRef.current?.focus();
               }}
             >
               {c}
-            </NeuButton>
+            </Button>
           ))}
         </div>
 

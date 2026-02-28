@@ -1,9 +1,13 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
 :root {
   --container: min(1080px, calc(100vw - clamp(24px, 5vw, 80px)));
-  --header-h: 58px; /* used in screen min-height calc */
+  --header-h: 58px;
 
-  /* spacing scale
-     Every margin, padding and gap must come from here*/
+  /* spacing scale — every margin, padding and gap must come from here */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -13,35 +17,34 @@
   --sp-7: clamp(24px, 3.5vh, 36px);
   --sp-8: clamp(32px, 5vh, 56px);
 
-  /* border-radius scale: Used for every rounded corner in the app.*/
+  /* border-radius scale */
   --r-sm: 8px;
-  --r: 14px; /* default — inputs, chips, cards, buttons */
-  --r-lg: 20px; /* large cards */
-  --r-pill: 999px; /* orbs, dots, fully round shapes */
+  --r: 14px;
+  --r-lg: 20px;
+  --r-pill: 999px;
 
-  --neu-bg: #e8eaec;
-  --neu-drop:
-    12px 12px 30px rgba(13, 39, 80, 0.14),
-    -8px -8px 20px rgba(255, 255, 255, 0.95);
-  --neu-drop-sm:
-    6px 6px 16px rgba(13, 39, 80, 0.13),
-    -4px -4px 10px rgba(255, 255, 255, 0.95);
-  --neu-inner:
-    inset 4px 4px 10px rgba(13, 39, 80, 0.12),
-    inset -4px -4px 10px rgba(255, 255, 255, 0.85);
-  --neu-inner-focus:
-    inset 5px 5px 12px rgba(13, 39, 80, 0.15),
-    inset -3px -3px 8px rgba(255, 255, 255, 0.8),
-    0 0 0 2px rgba(29, 112, 184, 0.25);
-  --neu-header-shadow:
-    0 4px 12px rgba(13, 39, 80, 0.08), 0 -1px 0 rgba(255, 255, 255, 0.9) inset;
-  --neu-footer-shadow:
-    0 -4px 12px rgba(13, 39, 80, 0.06), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  /* NB theme tokens */
+  --background: oklch(94.27% 0.0268 242.57);
+  --secondary-background: oklch(100% 0 0);
+  --foreground: oklch(0% 0 0);
+  --main-foreground: oklch(0% 0 0);
+  --main: #1d70b8;
+  --border: oklch(0% 0 0);
+  --ring: oklch(0% 0 0);
+  --overlay: oklch(0% 0 0 / 0.8);
+  --shadow: 4px 4px 0px 0px var(--border);
+  --chart-1: #0099ff;
+  --chart-2: #ff4d50;
+  --chart-3: #facc00;
+  --chart-4: #05e17a;
+  --chart-5: #7a83ff;
+  --chart-active-dot: #000;
 
+  /* semantic aliases used across components — phase these out as components migrate */
   --c-strong: #1a2a3a;
   --c-mid: #5a6d85;
   --c-dim: #5a6d85;
-  --c-accent: #1d70b8;
+  --c-accent: var(--main);
   --c-accent-ring: rgba(29, 112, 184, 0.25);
   --c-accent-glow: rgba(18, 23, 27, 0.5);
   --c-divider: rgba(13, 39, 80, 0.08);
@@ -64,180 +67,115 @@
   --t-display: clamp(30px, 3.5vw + 14px, 76px);
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+.dark {
+  --background: oklch(27.08% 0.0336 240.69);
+  --secondary-background: oklch(23.93% 0 0);
+  --foreground: oklch(92.49% 0 0);
+  --main-foreground: oklch(0% 0 0);
+  --main: oklch(61.9% 0.16907 248.5982);
+  --border: oklch(0% 0 0);
+  --ring: oklch(100% 0 0);
+  --shadow: 4px 4px 0px 0px var(--border);
+  --chart-1: #008ae5;
+  --chart-2: #ff6669;
+  --chart-3: #e0b700;
+  --chart-4: #04c86d;
+  --chart-5: #7a83ff;
+  --chart-active-dot: #fff;
+
+  --c-strong: #e8edf2;
+  --c-mid: #9aafc7;
+  --c-dim: #9aafc7;
+  --c-accent: var(--main);
 }
 
-html,
-body {
-  background: var(--neu-bg);
-  color: var(--c-strong);
-  font-family: var(--font-inter, Inter, system-ui, sans-serif);
-  min-height: 100dvh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@theme inline {
+  --color-main: var(--main);
+  --color-background: var(--background);
+  --color-secondary-background: var(--secondary-background);
+  --color-foreground: var(--foreground);
+  --color-main-foreground: var(--main-foreground);
+  --color-border: var(--border);
+  --color-overlay: var(--overlay);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --spacing-boxShadowX: 4px;
+  --spacing-boxShadowY: 4px;
+  --spacing-reverseBoxShadowX: -4px;
+  --spacing-reverseBoxShadowY: -4px;
+  --radius-base: 5px;
+  --shadow-shadow: var(--shadow);
+  --font-weight-base: 500;
+  --font-weight-heading: 700;
+
+  /* spacing tokens exposed as Tailwind utilities e.g. p-sp-4, gap-sp-2 */
+  --spacing-sp-1: 4px;
+  --spacing-sp-2: 8px;
+  --spacing-sp-3: 12px;
+  --spacing-sp-4: 16px;
+  --spacing-sp-5: 20px;
+  --spacing-sp-6: clamp(20px, 3vh, 28px);
+  --spacing-sp-7: clamp(24px, 3.5vh, 36px);
+  --spacing-sp-8: clamp(32px, 5vh, 56px);
+
+  --font-size-t-2xs: clamp(9px, 0.5vw + 6px, 11px);
+  --font-size-t-xs: clamp(10px, 0.55vw + 7px, 13px);
+  --font-size-t-sm: clamp(12px, 0.65vw + 8px, 15px);
+  --font-size-t-base: clamp(14px, 0.8vw + 9px, 18px);
+  --font-size-t-lg: clamp(16px, 1vw + 10px, 22px);
+  --font-size-t-xl: clamp(20px, 1.4vw + 10px, 34px);
+  --font-size-t-display: clamp(30px, 3.5vw + 14px, 76px);
+
+  --radius-sm: 8px;
+  --radius-DEFAULT: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--neu-bg);
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(13, 39, 80, 0.15);
-  border-radius: var(--r-pill);
-}
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 
-/*NEUMORPHIC*/
-/*  All use --r, --sp-*, --neu-* tokens*/
+  html,
+  body {
+    @apply text-foreground font-base bg-background;
+    font-family: var(--font-inter, Inter, system-ui, sans-serif);
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-/* Static raised label */
-.neu-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  background: var(--neu-bg);
-  box-shadow: var(--neu-drop-sm);
-  border-radius: var(--r);
-  padding: var(--sp-2) var(--sp-4);
-  font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--c-dim);
-  white-space: nowrap;
-}
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading;
+  }
 
-/* Interactive raised button */
-.neu-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  background: var(--neu-bg);
-  box-shadow: var(--neu-drop-sm);
-  border-radius: var(--r);
-  border: none;
-  padding: var(--sp-3) var(--sp-4);
-  font-size: var(--t-sm);
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  color: var(--c-mid);
-  cursor: pointer;
-  line-height: 1.4;
-  min-height: 44px; /* accessible touch target */
-  transition:
-    box-shadow 0.2s ease,
-    color 0.2s ease;
-}
-.neu-btn:hover {
-  color: var(--c-accent);
-  box-shadow:
-    6px 6px 16px rgba(13, 39, 80, 0.13),
-    -4px -4px 10px rgba(255, 255, 255, 0.95),
-    0 0 0 1.5px rgba(29, 112, 184, 0.3);
-}
-.neu-btn:active,
-.neu-btn[data-active="true"] {
-  box-shadow: var(--neu-inner);
-  color: var(--c-accent);
-}
-.neu-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* -- Variants -- */
-.neu-btn[data-variant="primary"],
-.neu-btn[data-variant="accent"] {
-  color: var(--c-accent);
-  box-shadow:
-    var(--neu-drop-sm),
-    0 0 0 2px var(--c-accent-ring);
-}
-.neu-btn[data-variant="primary"]:active,
-.neu-btn[data-variant="accent"]:active {
-  box-shadow: var(--neu-inner);
-}
-
-.neu-btn[data-variant="subtle"] {
-  color: var(--c-mid);
-}
-.neu-btn[data-variant="subtle"]:hover {
-  color: var(--c-accent);
-}
-
-/* Sunk input shell */
-.neu-input-shell {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  background: var(--neu-bg);
-  border-radius: var(--r);
-  box-shadow: var(--neu-inner);
-  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
-  transition: box-shadow 0.2s ease;
-}
-.neu-input-shell:focus-within {
-  box-shadow: var(--neu-inner-focus);
-}
-
-/* Bare text input inside shell */
-.neu-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  font-family: inherit;
-  color: var(--c-strong);
-  caret-color: var(--c-accent);
-  font-size: 16px; /* prevents iOS zoom */
-  padding: clamp(12px, 1.8vh, 18px) 0;
-}
-@media (min-width: 640px) {
-  .neu-input {
-    font-size: var(--t-base);
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--background);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(13, 39, 80, 0.15);
+    border-radius: var(--r-pill);
   }
 }
-.neu-input::placeholder {
-  color: var(--c-dim);
-}
 
-/* Raised square icon button */
-.neu-icon-btn {
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--neu-bg);
-  border: none;
-  border-radius: var(--r);
-  box-shadow: var(--neu-drop-sm);
-  color: var(--c-accent);
-  cursor: pointer;
-  transition: box-shadow 0.15s ease;
-}
-.neu-icon-btn:hover {
-  box-shadow:
-    6px 6px 16px rgba(13, 39, 80, 0.16),
-    -4px -4px 10px rgba(255, 255, 255, 0.95),
-    0 0 0 1.5px rgba(29, 112, 184, 0.3);
-}
-.neu-icon-btn:active {
-  box-shadow: var(--neu-inner);
-}
-.neu-icon-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* TYPOGRAPHY*/
+/* TYPOGRAPHY */
 
 .neu-eyebrow {
   font-size: var(--t-xs);
@@ -263,7 +201,6 @@ body {
 
 /* ANIMATIONS */
 
-/* pulse : oading dots, active stage dot */
 @keyframes pulse {
   0%,
   100% {
@@ -274,14 +211,12 @@ body {
   }
 }
 
-/* spin — both spinners (stage + clarifier) */
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* slide-in: stage rows, reason rows */
 @keyframes slide-in {
   from {
     opacity: 0;
@@ -300,9 +235,8 @@ body {
   animation: slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* SHARED LAYOUT*/
+/* LAYOUT */
 
-/* Screen wrap*/
 .screen {
   min-height: calc(100dvh - var(--header-h));
   display: flex;
@@ -312,13 +246,11 @@ body {
   padding: var(--sp-8) 0;
 }
 
-/* Answer / Clarifier align to top */
 .screen--top {
   justify-content: flex-start;
   width: 100%;
 }
 
-/* Fade-in entrance used by Answer + Clarifier */
 .screen--fade {
   opacity: 0;
   transform: translateY(10px);
@@ -331,25 +263,22 @@ body {
   transform: translateY(0);
 }
 
-/* Screen body*/
 .screen-body {
   width: var(--container);
   margin: 0 auto;
 }
 
-/* Raised card variant (LoadingScreen only) */
 .screen-body--card {
-  background: var(--neu-bg);
+  background: var(--secondary-background);
   border-radius: var(--r-lg);
-  box-shadow: var(--neu-drop);
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow);
   padding: clamp(20px, 3.5vw, 36px);
 }
 .screen-body--narrow {
   width: min(600px, var(--container));
 }
 
-/* Top strip */
-/*  orb + query context + optional status — used on Answer + Clarifier */
 .top-strip {
   display: flex;
   align-items: center;
@@ -359,7 +288,6 @@ body {
   margin-bottom: var(--sp-5);
 }
 
-/* Orb/sphere */
 .orb {
   flex-shrink: 0;
   width: 44px;
@@ -369,7 +297,6 @@ body {
   position: relative;
 }
 
-/* Query block */
 .query-block {
   flex: 1;
   min-width: 0;
@@ -384,7 +311,6 @@ body {
   overflow: hidden;
 }
 
-/* Section */
 .section {
   display: flex;
   flex-direction: column;
@@ -392,7 +318,6 @@ body {
   width: 100%;
 }
 
-/* Section header */
 .section-hdr {
   display: flex;
   align-items: center;
@@ -400,7 +325,6 @@ body {
   gap: var(--sp-2);
 }
 
-/* Actions row */
 .actions-row {
   display: flex;
   align-items: center;
@@ -408,8 +332,6 @@ body {
   flex-wrap: wrap;
 }
 
-/* Timeline row */
-/*  Used by: pipeline stages (Loading) + reasoning rows (Answer) */
 .tl-row {
   display: flex;
   align-items: stretch;
@@ -424,7 +346,6 @@ body {
   animation: slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Vertical accent line */
 .tl-line {
   flex-shrink: 0;
   width: 1px;
@@ -434,13 +355,12 @@ body {
   transition: background 0.2s ease;
 }
 .tl-line--done {
-  background: rgba(29, 112, 184, 0.85);
+  background: var(--c-accent);
 }
 .tl-line--active {
   background: rgba(29, 112, 184, 0.35);
 }
 
-/* Dot indicator */
 .tl-dot {
   flex-shrink: 0;
   width: 6px;
@@ -451,27 +371,25 @@ body {
   transition: all 0.2s ease;
 }
 .tl-dot--done {
-  background: rgba(29, 112, 184, 0.95);
+  background: var(--c-accent);
   box-shadow: 0 0 10px rgba(29, 112, 184, 0.25);
 }
 .tl-dot--active {
-  background: rgba(29, 112, 184, 0.95);
+  background: var(--c-accent);
   box-shadow: 0 0 10px rgba(29, 112, 184, 0.3);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
-/* Spinner */
 .spinner {
   flex-shrink: 0;
   width: 10px;
   height: 10px;
   border-radius: var(--r-pill);
   border: 2px solid rgba(13, 39, 80, 0.12);
-  border-top-color: rgba(29, 112, 184, 0.9);
+  border-top-color: var(--c-accent);
   animation: spin 0.7s linear infinite;
 }
 
-/* Status pill  */
 .status-pill {
   display: flex;
   align-items: center;
@@ -498,18 +416,17 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--neu-bg);
+  background: var(--background);
 }
 
-/* Header */
 .header {
   height: var(--header-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 clamp(var(--sp-4), 4vw, 40px);
-  background: var(--neu-bg);
-  box-shadow: var(--neu-header-shadow);
+  background: var(--background);
+  border-bottom: 1px solid var(--c-divider);
   gap: var(--sp-3);
   position: relative;
   z-index: 10;
@@ -527,27 +444,30 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--neu-bg);
-  border: none;
+  background: var(--background);
+  border: 2px solid var(--border);
   border-radius: var(--r);
-  box-shadow: var(--neu-drop-sm);
+  box-shadow: var(--shadow);
   color: var(--c-mid);
   cursor: pointer;
   transition:
     box-shadow 0.15s ease,
-    color 0.15s ease;
+    color 0.15s ease,
+    translate 0.15s ease;
 }
 .header-back-btn:hover {
   color: var(--c-accent);
+  translate: 2px 2px;
+  box-shadow: none;
 }
 
-/* Wordmark — reuses .neu-badge structure */
 .header-wordmark {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
-  background: var(--neu-bg);
-  box-shadow: var(--neu-drop-sm);
+  background: var(--background);
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow);
   border-radius: var(--r);
   padding: var(--sp-2) var(--sp-4);
   font-size: var(--t-sm);
@@ -561,11 +481,10 @@ body {
   color: var(--c-accent);
 }
 
-/* Footer */
 .footer {
   padding: var(--sp-3);
   text-align: center;
-  box-shadow: var(--neu-footer-shadow);
+  border-top: 1px solid var(--c-divider);
 }
 .footer p {
   font-size: var(--t-2xs);
@@ -576,10 +495,9 @@ body {
 }
 
 /* INITIAL SCREEN */
-/*  Uses .screen base class + these overrides.*/
 
 .initial-screen {
-  flex: 1; /* fills space between header and footer */
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -611,7 +529,6 @@ body {
   margin: var(--sp-4) auto 0;
 }
 
-/* Chips wrap and centre naturally */
 .initial-chips {
   width: var(--container);
   display: flex;
@@ -635,7 +552,6 @@ body {
   gap: var(--sp-2);
 }
 
-/* Keyboard hint — show right version per device */
 .hint-mobile {
   display: inline;
 }
@@ -677,10 +593,9 @@ body {
 .initial-error {
   width: 100%;
   border-radius: var(--r);
-  box-shadow: var(--neu-inner);
+  border: 2px solid rgba(212, 53, 28, 0.4);
   padding: var(--sp-3) var(--sp-4);
   background: rgba(212, 53, 28, 0.06);
-  border: 1px solid rgba(212, 53, 28, 0.18);
 }
 .initial-error p {
   color: var(--gov-red);
@@ -689,7 +604,6 @@ body {
 }
 
 /* LOADING SCREEN */
-/*  Uses .screen + .screen-body--card + shared .tl-row etc.    */
 
 .ls-sphere-wrap {
   position: relative;
@@ -697,6 +611,7 @@ body {
   width: clamp(180px, 28vw, 300px);
   height: clamp(180px, 28vw, 300px);
   border-radius: var(--r-pill);
+  margin-bottom: 40px;
 }
 .ls-sphere-glow {
   position: absolute;
@@ -756,7 +671,7 @@ body {
   background: linear-gradient(
     to right,
     transparent,
-    rgba(29, 112, 184, 0.9),
+    var(--c-accent),
     transparent
   );
   transition: width 0.6s ease;
@@ -768,7 +683,6 @@ body {
   text-transform: uppercase;
 }
 
-/* Query block inside card */
 .ls-query-text {
   font-size: var(--t-base);
   color: var(--c-mid);
@@ -779,23 +693,22 @@ body {
   margin-top: var(--sp-2);
 }
 
-/* Elapsed timer */
 .ls-elapsed {
   font-size: var(--t-xs);
   color: var(--c-dim);
   font-variant-numeric: tabular-nums;
 }
 
-/* Stage tile — raised card inside each .tl-row */
 .ls-stage-tile {
   flex: 1;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
-  background: var(--neu-bg);
+  background: var(--secondary-background);
   border-radius: var(--r);
-  box-shadow: var(--neu-drop-sm);
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow);
   transition: box-shadow 0.2s ease;
 }
 .ls-stage-name {
@@ -825,10 +738,7 @@ body {
 }
 
 /* ANSWER SCREEN */
-/*  Uses .screen.screen--top.screen--fade + .screen-body
-    + .top-strip + .orb + .query-block + .section + .tl-row    */
 
-/* Rate badge colour variants — shadow from .neu-badge */
 .rate-badge--zero {
   color: var(--gov-green);
 }
@@ -861,7 +771,6 @@ body {
   padding-left: var(--sp-3);
 }
 
-/* Reason row text — sits inside .tl-row */
 .as-reason-text {
   flex: 1;
   font-size: var(--t-sm);
@@ -869,7 +778,6 @@ body {
   line-height: 1.7;
 }
 
-/* Citations */
 .as-cites {
   display: flex;
   flex-direction: column;
@@ -880,6 +788,8 @@ body {
   width: 100%;
   justify-content: space-between;
   text-align: left;
+  white-space: normal;
+  height: auto;
 }
 .as-cite-left {
   flex: 1;
@@ -921,9 +831,8 @@ body {
   color: var(--c-mid);
 }
 
-/* CALRIFIER SCREEN */
+/* CLARIFIER SCREEN */
 
-/* Narrower max-width  */
 .cs-inner {
   width: min(720px, var(--container));
 }
@@ -933,7 +842,6 @@ body {
   display: block;
 }
 
-/* Glow overlay inside .orb — clarifier only */
 .cs-orb-glow {
   position: absolute;
   inset: 0;
@@ -959,7 +867,6 @@ body {
   padding-left: var(--sp-3);
 }
 
-/* Option button — full-width, label + description stacked */
 .cs-option-btn {
   width: 100%;
   flex-direction: column;

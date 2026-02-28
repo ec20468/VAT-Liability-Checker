@@ -66,6 +66,7 @@ export function MolecularSphere({ done, className }: MolecularSphereProps) {
     ctx.fill();
 
     const particleTex = new THREE.CanvasTexture(dc);
+    particleTex.flipY = false;
     const geo = new THREE.IcosahedronGeometry(1, 40);
     const mat = new THREE.PointsMaterial({
       map: particleTex,

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FlowResponse } from "@/lib/schemas/flow";
 import { Header } from "@/components/ui/Header";
 import { MolecularSphere } from "@/components/ui/Sphere";
-import { NeuBadge } from "../ui/NeuSurface";
+import { Badge } from "@/components/ui/badge";
 
 const STAGE_META: Record<string, string> = {
   classifying: "Classifying supply",
@@ -158,14 +158,12 @@ export function LoadingScreen({ request, onDone, onError }: Props) {
         <div className="screen-body screen-body--card screen-body--narrow">
           {/* Query */}
           <div className="ls-query">
-            <NeuBadge>Query</NeuBadge>
+            Query
             <p className="ls-query-text">&ldquo;{request.userText}&rdquo;</p>
           </div>
 
           {/* Pipeline */}
-          {/* Pipeline */}
           <div className="section-hdr">
-            <NeuBadge>Pipeline</NeuBadge>
             <span className="ls-elapsed">{fmt(elapsed)}</span>
           </div>
 

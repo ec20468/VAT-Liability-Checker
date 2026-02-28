@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import type { FlowResponse } from "@/lib/schemas/flow";
 import { MiniSphere } from "@/components/ui/MiniSphere";
-import { NeuButton, NeuBadge } from "@/components/ui/NeuSurface";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   query: string;
@@ -48,7 +49,7 @@ export function ClarifierScreen({
             <MiniSphere color="#1d70b8" />
           </div>
           <div className="query-block">
-            <NeuBadge>Query</NeuBadge>
+            <p className="neu-eyebrow">Query</p>
             <p className="query-text">&ldquo;{query}&rdquo;</p>
           </div>
           <div className="status-pill">
@@ -58,7 +59,7 @@ export function ClarifierScreen({
         </div>
 
         <div className="section">
-          <NeuBadge>Clarification needed</NeuBadge>
+          <p className="neu-eyebrow">Clarification needed</p>
           <p className="cs-question-text">{q.questionText}</p>
           <p className="cs-reason">{q.reasoning}</p>
         </div>
@@ -67,9 +68,9 @@ export function ClarifierScreen({
           {q.options.map((opt) => {
             const isSelected = selected === opt.value;
             return (
-              <NeuButton
+              <Button
                 key={opt.value}
-                variant={isSelected ? "selected" : "default"}
+                variant={isSelected ? "default" : "neutral"}
                 disabled={submitting}
                 onClick={() => !submitting && setSelected(opt.value)}
                 className="cs-option-btn"
@@ -78,24 +79,24 @@ export function ClarifierScreen({
                 {opt.description && (
                   <span className="cs-option-desc">{opt.description}</span>
                 )}
-              </NeuButton>
+              </Button>
             );
           })}
         </div>
 
         {/* Actions */}
         <div className="actions-row">
-          <NeuButton
-            variant={selected && !submitting ? "primary" : "default"}
+          <Button
+            variant={selected && !submitting ? "default" : "neutral"}
             onClick={handleSubmit}
             disabled={!selected || submitting}
           >
             {submitting && <span className="spinner" />}
             {submitting ? "Analysing…" : "Continue →"}
-          </NeuButton>
-          <NeuButton variant="subtle" onClick={onReset}>
+          </Button>
+          <Button variant="neutral" onClick={onReset}>
             ← Start over
-          </NeuButton>
+          </Button>
         </div>
       </div>
     </div>
