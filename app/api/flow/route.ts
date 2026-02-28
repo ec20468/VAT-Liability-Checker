@@ -198,6 +198,7 @@ function scoreParagraph(text: string, terms: string[]) {
 }
 
 function mergeColonParagraphs(paragraphs: { index: number; text: string }[]) {
+  //ensure the model sees multi-line paragraphs as one chunk (e.g., a condition followed by its consequence)
   const merged: { index: number; text: string }[] = [];
   let i = 0;
   while (i < paragraphs.length) {
@@ -536,9 +537,13 @@ function buildAskPrompt(
     "",
     "Rules:",
     "- Your question MUST resolve the blocking condition; do not ask unrelated checks.",
-    "- Ask about an observable factual characteristic only.",
-    "- Do NOT ask the user to make legal classifications.",
+    "- Ask about an observable factual characteristic only — something the user can see, measure or verify.",
+    "- FORBIDDEN: asking whether legal conditions or VAT concessions are 'met'.",
+    "- FORBIDDEN: asking the user to make legal classifications of any kind.",
+    "- FORBIDDEN: options that restate VAT outcomes (zero-rated, standard-rated, exempt, etc.).",
     "- Options must NOT be VAT rates.",
+    "- BAD question: 'Does this meet zero-rated conditions?' — this is a legal classification.",
+    "- GOOD question: 'Is the product sold at above room temperature?' — this is an observable fact.",
     "- Each option MUST cite the paragraph that defines the option/branch.",
     "- option.value MUST be a short stable token (e.g., YES/NO, HOT/NOT_HOT)",
     `- Do NOT use any of these question ids: ${JSON.stringify(priorAsked)}`,
