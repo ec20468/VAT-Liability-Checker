@@ -381,9 +381,7 @@ body {
   font-style: italic;
   line-height: 1.5;
   margin-top: var(--sp-2);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Section */
@@ -928,6 +926,11 @@ body {
 /* Narrower max-width  */
 .cs-inner {
   width: min(720px, var(--container));
+}
+.cs-miniSphereCanvas {
+  width: 40px;
+  height: 40px;
+  display: block;
 }
 
 /* Glow overlay inside .orb — clarifier only */

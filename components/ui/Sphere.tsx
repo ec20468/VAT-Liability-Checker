@@ -1,14 +1,8 @@
-// MolecularSphere.tsx
-// Self-contained Three.js particle sphere used on the loading screen.
-// Switches from blue (#1d70b8) to green (#00703c) when done.
-// Canvas sizing and resize handling are internal — just drop it in.
-
 "use client";
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-// Simplex noise GLSL — used to organically displace particles on the sphere surface
 const NOISE_GLSL = `
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
 vec4 mod289(vec4 x){return x-floor(x*(1./289.))*289.;}
@@ -37,7 +31,6 @@ float snoise(vec3 v){
 
 interface MolecularSphereProps {
   done: boolean;
-  // Width/height passed in so the parent controls sizing via CSS classes
   className?: string;
 }
 
@@ -45,13 +38,13 @@ export function MolecularSphere({ done, className }: MolecularSphereProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const matRef = useRef<THREE.PointsMaterial | null>(null);
 
-  // Boot Three.js once — never re-runs
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const W = canvas.offsetWidth,
       H = canvas.offsetHeight;
+
     const renderer = new THREE.WebGLRenderer({
       canvas,
       alpha: true,
@@ -64,7 +57,6 @@ export function MolecularSphere({ done, className }: MolecularSphereProps) {
     const cam = new THREE.PerspectiveCamera(72, W / H, 0.1, 1000);
     cam.position.z = 2.9;
 
-    // Round particle texture
     const dc = document.createElement("canvas");
     dc.width = dc.height = 32;
     const ctx = dc.getContext("2d")!;
@@ -73,16 +65,16 @@ export function MolecularSphere({ done, className }: MolecularSphereProps) {
     ctx.arc(16, 16, 16, 0, Math.PI * 2);
     ctx.fill();
 
+    const particleTex = new THREE.CanvasTexture(dc);
     const geo = new THREE.IcosahedronGeometry(1, 40);
     const mat = new THREE.PointsMaterial({
-      map: new THREE.CanvasTexture(dc),
+      map: particleTex,
       blending: THREE.NormalBlending,
-      color: new THREE.Color("#1d70b8"), // GOV.UK blue
+      color: new THREE.Color("#1d70b8"),
       transparent: true,
       opacity: 0.9,
     });
 
-    // Inject noise-based displacement into the vertex shader
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.time = { value: 0 };
       shader.uniforms.radius = { value: 1.5 };
@@ -137,11 +129,13 @@ export function MolecularSphere({ done, className }: MolecularSphereProps) {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
+      geo.dispose();
+      mat.dispose();
+      particleTex.dispose();
       renderer.dispose();
     };
   }, []);
 
-  // Swap colour when pipeline completes — GOV.UK blue → GOV.UK green
   useEffect(() => {
     if (!matRef.current) return;
     matRef.current.color.set(done ? "#00703c" : "#1d70b8");

@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-// GLSL noise fn. this gets injected into the vertex shader so the points arent static.
 const NOISE_GLSL = `
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
 vec4 mod289(vec4 x){return x-floor(x*(1./289.))*289.;}
@@ -37,87 +36,103 @@ export function MiniSphere({ color }: { color: string }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const W = canvas.offsetWidth,
-      H = canvas.offsetHeight;
-
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      alpha: true,
-      antialias: true,
-    });
-
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.setSize(W, H);
-
-    const scene = new THREE.Scene();
-    const cam = new THREE.PerspectiveCamera(72, W / H, 0.1, 1000);
-    cam.position.z = 2.9;
-
-    const dc = document.createElement("canvas");
-    dc.width = dc.height = 32;
-    const ctx = dc.getContext("2d")!;
-    const p = new Path2D();
-    p.arc(16, 16, 16, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill(p);
-
-    const geo = new THREE.IcosahedronGeometry(1, 40);
-
-    const mat = new THREE.PointsMaterial({
-      map: new THREE.CanvasTexture(dc),
-      blending: THREE.NormalBlending,
-      color: new THREE.Color(color),
-      depthTest: false,
-      transparent: true,
-      opacity: 0.9,
-    });
-
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.time = { value: 0 };
-      shader.uniforms.radius = { value: 1.5 };
-      shader.uniforms.particleSizeMin = { value: 0.009 };
-      shader.uniforms.particleSizeMax = { value: 0.065 };
-
-      shader.vertexShader = [
-        "uniform float time,radius,particleSizeMin,particleSizeMax;",
-        NOISE_GLSL,
-        shader.vertexShader,
-      ].join("\n");
-
-      shader.vertexShader = shader.vertexShader.replace(
-        "#include <begin_vertex>",
-        `
-        vec3 p=position; float n=snoise(vec3(p.x*.6+time*.2,p.y*.4+time*.3,p.z*.2+time*.2));
-        p+=n*.4; p*=radius/length(p); float s=mix(particleSizeMin,particleSizeMax,n); vec3 transformed=p;
-      `,
-      );
-
-      shader.vertexShader = shader.vertexShader.replace(
-        "gl_PointSize = size;",
-        "gl_PointSize = s;",
-      );
-
-      mat.userData.shader = shader;
-    };
-
-    const mesh = new THREE.Points(geo, mat);
-    scene.add(mesh);
-
     let raf: number;
+    let renderer: THREE.WebGLRenderer;
+    let geo: THREE.IcosahedronGeometry;
+    let mat: THREE.PointsMaterial;
+    let particleTex: THREE.CanvasTexture;
 
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      const t = performance.now() * 0.001;
-      mesh.rotation.set(0, t * 0.18, t * 0.04);
-      if (mat.userData.shader) mat.userData.shader.uniforms.time.value = t;
-      renderer.render(scene, cam);
+    const init = (W: number, H: number) => {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        alpha: true,
+        antialias: true,
+      });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(W, H);
+
+      const scene = new THREE.Scene();
+      const cam = new THREE.PerspectiveCamera(72, W / H, 0.1, 1000);
+      cam.position.z = 2.9;
+
+      const dc = document.createElement("canvas");
+      dc.width = dc.height = 32;
+      const ctx = dc.getContext("2d")!;
+      const p = new Path2D();
+      p.arc(16, 16, 16, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill(p);
+
+      particleTex = new THREE.CanvasTexture(dc);
+      geo = new THREE.IcosahedronGeometry(1, 40);
+      mat = new THREE.PointsMaterial({
+        map: particleTex,
+        blending: THREE.NormalBlending,
+        color: new THREE.Color(color),
+        depthTest: false,
+        transparent: true,
+        opacity: 0.9,
+      });
+
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.time = { value: 0 };
+        shader.uniforms.radius = { value: 1.5 };
+        shader.uniforms.particleSizeMin = { value: 0.009 };
+        shader.uniforms.particleSizeMax = { value: 0.065 };
+
+        shader.vertexShader = [
+          "uniform float time,radius,particleSizeMin,particleSizeMax;",
+          NOISE_GLSL,
+          shader.vertexShader,
+        ].join("\n");
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `
+          vec3 p=position; float n=snoise(vec3(p.x*.6+time*.2,p.y*.4+time*.3,p.z*.2+time*.2));
+          p+=n*.4; p*=radius/length(p); float s=mix(particleSizeMin,particleSizeMax,n); vec3 transformed=p;
+        `,
+        );
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "gl_PointSize = size;",
+          "gl_PointSize = s;",
+        );
+
+        mat.userData.shader = shader;
+      };
+
+      const mesh = new THREE.Points(geo, mat);
+      scene.add(mesh);
+
+      const tick = () => {
+        raf = requestAnimationFrame(tick);
+        const t = performance.now() * 0.001;
+        mesh.rotation.set(0, t * 0.18, t * 0.04);
+        if (mat.userData.shader) mat.userData.shader.uniforms.time.value = t;
+        renderer.render(scene, cam);
+      };
+
+      tick();
     };
 
-    tick();
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) {
+        ro.disconnect();
+        init(width, height);
+      }
+    });
+
+    ro.observe(canvas);
 
     return () => {
+      ro.disconnect();
       cancelAnimationFrame(raf);
-      renderer.dispose();
+      geo?.dispose();
+      mat?.dispose();
+      particleTex?.dispose();
+      renderer?.dispose();
     };
   }, [color]);
 
