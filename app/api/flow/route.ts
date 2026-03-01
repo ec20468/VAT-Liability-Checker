@@ -1,5 +1,3 @@
-// route.ts — streaming VAT pipeline (NDJSON)
-//
 // This route streams newline-delimited JSON events so the UI can show progress while the model runs.
 // Format (one JSON object per line):
 //   { type: "progress", stage: string, detail?: string }
@@ -63,7 +61,7 @@ function createStream() {
   return { stream, emit, close };
 }
 
-// -------- Notice selection (cheap narrowing step) --------
+// notice selection
 // scoreTitle: crude keyword matching against notice titles.
 // selectNotices:
 //   1) ask model for 1–3 generic “supply descriptions” (worded like notice titles)
@@ -167,11 +165,14 @@ async function selectNotices(
 
   // Fallback: if model output is empty/invalid, use the top few ranked notices.
   return valid.length
-    ? Array.from(new Set(valid))
-    : ranked.slice(0, 3).map((r) => r.basePath);
+    ? { basePaths: Array.from(new Set(valid)), expansionWords: words }
+    : {
+        basePaths: ranked.slice(0, 3).map((r) => r.basePath),
+        expansionWords: words,
+      };
 }
 
-// -------- Evidence scoring / pooling --------
+// Evidence pooling/scoring
 // scoreParagraph: crude term matching + small boost for VAT treatment keywords.
 // buildEvidencePool:
 //   - fetch notice docs for chosen basePaths
@@ -280,7 +281,7 @@ async function buildEvidencePool(
     .map((e, i) => ({ ...e, poolIndex: i }));
 }
 
-// -------- Citation safety helpers --------
+// citation safety helpers
 // localWindow: build an allowed set around indices (prevents far-away/hallucinated blockers).
 // filterLocal: keep only indices in the allowed set.
 // assertInRange: hard guardrail so we never emit out-of-range cite indices.
@@ -620,6 +621,16 @@ export async function POST(req: Request) {
 
       // Merge newly answered values into the running state.
       for (const a of parsed.data.answered ?? []) priorAnswers[a.id] = a.value;
+      // Used for notice selection (includes prior answers to reduce ambiguity).
+      const mergedQuery = [
+        userText,
+        ...Object.values(priorAnswers).map(String),
+      ].join(" ");
+
+      const { basePaths, expansionWords } =
+        priorBasePaths.length > 0
+          ? { basePaths: priorBasePaths, expansionWords: [] }
+          : await selectNotices(mergedQuery, emit);
 
       // Query terms = user text + prior answers, tokenised for paragraph scoring.
       const queryTerms = Array.from(
@@ -629,21 +640,12 @@ export async function POST(req: Request) {
             .toLowerCase()
             .split(/\s+/)
             .map((w) => w.replace(/[^\p{L}\p{N}]+/gu, ""))
-            .filter((w) => w.length >= 3),
+            .filter((w) => w.length >= 3)
+            .concat(expansionWords),
         ),
       );
 
-      // Used for notice selection (includes prior answers to reduce ambiguity).
-      const mergedQuery = [
-        userText,
-        ...Object.values(priorAnswers).map(String),
-      ].join(" ");
-
       // Stage 1+2: select VAT notices (or re-use cached basePaths from state).
-      const basePaths =
-        priorBasePaths.length > 0
-          ? priorBasePaths
-          : await selectNotices(mergedQuery, emit);
 
       // Stage 3+4: fetch and rank evidence paragraphs into a single pool.
       const evidence = await buildEvidencePool(basePaths, queryTerms, emit);
