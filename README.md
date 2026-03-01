@@ -27,9 +27,10 @@ VAT liability in the UK is governed by 109 HMRC VAT Notices. Querying all of the
 | --------------- | -------------------------------------------------------------------- |
 | Framework       | [Next.js](https://nextjs.org/) 14 (App Router)                       |
 | Styling         | [Tailwind CSS](https://tailwindcss.com/) v4                          |
+| UI Components   | [shadcn/ui](https://ui.shadcn.com/)                                  |
+| Theming         | [next-themes](https://github.com/pacocoursey/next-themes)            |
 | AI              | [Vercel AI SDK](https://sdk.vercel.ai/) + GPT-4o-mini                |
 | Data            | [GOV.UK Content API](https://content-api.publishing.service.gov.uk/) |
-| UI Components   | [Radix UI](https://www.radix-ui.com/)                                |
 | Animations      | [Motion](https://motion.dev/) + [Three.js](https://threejs.org/)     |
 | Validation      | [Zod](https://zod.dev/)                                              |
 | Package Manager | [pnpm](https://pnpm.io/)                                             |
